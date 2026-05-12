@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Real time Attendance System</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+  <header>
+    <h1>🎓 Real time <span>Attendance</span> System</h1>
+    <span class="header-meta">GraphQL · WebSocket · MongoDB — localhost:4000</span>
+  </header>
+
+  <div class="grid">
+
+    <!-- ── Queries ── -->
+    <div class="card">
+      <div class="card-header">
+        <span class="tag tag-query">Query</span>
+        <span class="card-title">Fetch Data</span>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-students">All Students</button>
+        <button id="btn-courses">All Courses</button>
+        <button id="btn-sessions">All Sessions</button>
+      </div>
+
+      <div class="field">
+        <label>Session ID — Attendance Summary</label>
+        <input id="summarySessionId" placeholder="paste session ObjectId..." />
+      </div>
+      <div><button id="btn-summary">Attendance Summary</button></div>
+
+      <pre id="query-result">// results will appear here</pre>
+    </div>
+
+    <!-- ── Student Stats ── -->
+    <div class="card">
+      <div class="card-header">
+        <span class="tag tag-query">Query</span>
+        <span class="card-title">Student Stats</span>
+      </div>
+
+      <div class="field">
+        <label>Student ID (ObjectId)</label>
+        <input id="stats-studentId" placeholder="paste student ObjectId..." />
+      </div>
+      <div><button id="btn-stats" class="btn-primary">▶ Get Stats</button></div>
+
+      <div id="stats-result" style="
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 12px;
+        font-size: 0.72rem;
+        color: #8fb4cc;
+        min-height: 80px;
+      ">// stats will appear here</div>
+    </div>
+
+    <!-- ── Mutations (tabbed) ── -->
+    <div class="card mutation-tabs">
+      <div class="card-header">
+        <span class="tag tag-mutation">Mutation</span>
+        <span class="card-title">Actions</span>
+      </div>
+
+      <!-- Tab bar -->
+      <div class="tabs">
+        <button class="tab tab-active" data-tab="single">Mark Single</button>
+        <button class="tab" data-tab="bulk">Bulk Mark</button>
+        <button class="tab" data-tab="enrollment">Enrollment</button>
+      </div>
+
+      <!-- Single mark panel -->
+      <div class="panel" data-panel="single">
+        <div class="field">
+          <label>Student ID (ObjectId)</label>
+          <input id="mut-studentId" placeholder="6a025..." />
+        </div>
+        <div class="field">
+          <label>Session ID (ObjectId)</label>
+          <input id="mut-sessionId" placeholder="6a025..." />
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select id="mut-status">
+            <option value="PRESENT">PRESENT</option>
+            <option value="ABSENT">ABSENT</option>
+            <option value="LATE">LATE</option>
+          </select>
+        </div>
+        <div><button id="btn-mark" class="btn-primary">▶ Mark Attendance</button></div>
+        <pre id="mutation-result">// result will appear here</pre>
+      </div>
+
+      <!-- Bulk mark panel -->
+      <div class="panel hidden" data-panel="bulk">
+        <div class="field">
+          <label>Session ID (ObjectId)</label>
+          <input id="bulk-sessionId" placeholder="paste session ObjectId..." />
+        </div>
+        <div class="field">
+          <label>Records — one per line: studentId,STATUS</label>
+          <textarea id="bulk-records" placeholder="6a025...,PRESENT&#10;6a026...,LATE&#10;6a027...,ABSENT"></textarea>
+        </div>
+        <div><button id="btn-bulk" class="btn-primary">▶ Bulk Mark</button></div>
+        <div id="bulk-result" style="
+          background: var(--bg);
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          padding: 12px;
+          font-size: 0.72rem;
+          color: #8fb4cc;
+          min-height: 60px;
+        ">// bulk result will appear here</div>
+      </div>
+
+      <!-- Enrollment panel -->
+      <div class="panel hidden" data-panel="enrollment">
+        <div class="field">
+          <label>Student ID (ObjectId)</label>
+          <input id="enroll-studentId" placeholder="paste student ObjectId..." />
+        </div>
+        <div class="field">
+          <label>Course ID (ObjectId)</label>
+          <input id="enroll-courseId" placeholder="paste course ObjectId..." />
+        </div>
+        <div class="btn-group">
+          <button id="btn-enroll" class="btn-primary">✓ Enroll</button>
+          <button id="btn-unenroll" class="btn-danger">✗ Unenroll</button>
+          <button id="btn-enrollments-student">By Student</button>
+          <button id="btn-enrollments-course">By Course</button>
+        </div>
+        <pre id="enroll-result">// enrollment result will appear here</pre>
+      </div>
+    </div>
+
+    <!-- ── Subscriptions ── -->
+    <div class="card">
+      <div class="card-header">
+        <span class="tag tag-sub">Subscription</span>
+        <span class="card-title">Real-time Feed</span>
+        <div class="ws-indicator">
+          <div id="ws-dot" class="ws-dot"></div>
+          <span id="ws-label">disconnected</span>
+        </div>
+      </div>
+
+      <div class="sub-controls">
+        <div class="field">
+          <label>Session ID (leave empty for all)</label>
+          <input id="sub-sessionId" placeholder="paste session ObjectId or leave empty..." />
+        </div>
+        <button id="sub-btn" class="btn-primary">▶ Start Subscription</button>
+      </div>
+
+      <div id="feed" class="feed">
+        <div class="feed-empty">Waiting for events...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
