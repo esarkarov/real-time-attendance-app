@@ -1,6 +1,4 @@
 # Smart Attendance System
-**Group 4** — Elvin Sarkarov, Elbay Mammadov, Roza Huseynzada  
-Distributed Programming (M1 DSAI) — UFAZ
 
 ## Tech Stack
 
