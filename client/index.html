@@ -3,17 +3,75 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Real time Attendance System</title>
+  <title>Real-time Attendance System</title>
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
 
   <header>
-    <h1>🎓 Real time <span>Attendance</span> System</h1>
-    <span class="header-meta">GraphQL · WebSocket · MongoDB — localhost:4000</span>
+    <h1>🎓 Real-time <span>Attendance</span> System</h1>
+    <span class="header-meta">GraphQL · WebSocket · MongoDB</span>
+    <div id="auth-user"></div>
   </header>
 
-  <div class="grid">
+  <!-- ── Auth Panel (shown when logged out) ── -->
+  <div id="auth-panel" class="card" style="max-width:440px; margin: 0 auto 32px;">
+    <div class="card-header">
+      <span class="tag tag-auth">Auth</span>
+      <span class="card-title">Sign In / Register</span>
+    </div>
+
+    <div class="tabs">
+      <button class="tab tab-active" data-auth-tab="login">Login</button>
+      <button class="tab" data-auth-tab="register">Register</button>
+    </div>
+
+    <!-- Login panel -->
+    <div class="panel" data-auth-panel="login">
+      <div class="field">
+        <label>Email</label>
+        <input id="auth-email" type="email" placeholder="martin@ufaz.az" />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input id="auth-password" type="password" placeholder="••••••••" />
+      </div>
+      <button id="btn-login" class="btn-primary">▶ Login</button>
+    </div>
+
+    <!-- Register panel -->
+    <div class="panel hidden" data-auth-panel="register">
+      <div class="field">
+        <label>Full Name</label>
+        <input id="reg-name" placeholder="Prof. Martin" />
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input id="reg-email" type="email" placeholder="martin@ufaz.az" />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input id="reg-password" type="password" placeholder="••••••••" />
+      </div>
+      <div class="field">
+        <label>Role</label>
+        <select id="reg-role">
+          <option value="TEACHER">TEACHER</option>
+          <option value="STUDENT">STUDENT</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Student ObjectId (only for STUDENT role)</label>
+        <input id="reg-studentId" placeholder="paste student ObjectId..." />
+      </div>
+      <button id="btn-register" class="btn-primary">▶ Register</button>
+    </div>
+
+    <div id="auth-error" class="auth-error hidden"></div>
+  </div>
+
+  <!-- ── Main App (shown when logged in) ── -->
+  <div id="app-grid" class="grid hidden">
 
     <!-- ── Queries ── -->
     <div class="card">
@@ -22,17 +80,19 @@
         <span class="card-title">Fetch Data</span>
       </div>
 
-      <div class="btn-group">
+      <div class="btn-group teacher-only">
         <button id="btn-students">All Students</button>
         <button id="btn-courses">All Courses</button>
+      </div>
+      <div class="btn-group">
         <button id="btn-sessions">All Sessions</button>
       </div>
 
-      <div class="field">
+      <div class="field teacher-only">
         <label>Session ID — Attendance Summary</label>
         <input id="summarySessionId" placeholder="paste session ObjectId..." />
       </div>
-      <div><button id="btn-summary">Attendance Summary</button></div>
+      <div class="teacher-only"><button id="btn-summary">Attendance Summary</button></div>
 
       <pre id="query-result">// results will appear here</pre>
     </div>
@@ -44,38 +104,39 @@
         <span class="card-title">Student Stats</span>
       </div>
 
-      <div class="field">
+      <div class="field teacher-only">
         <label>Student ID (ObjectId)</label>
         <input id="stats-studentId" placeholder="paste student ObjectId..." />
       </div>
-      <div><button id="btn-stats" class="btn-primary">▶ Get Stats</button></div>
+      <div class="teacher-only"><button id="btn-stats" class="btn-primary">▶ Get Stats</button></div>
 
-      <div id="stats-result" style="
-        background: var(--bg);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 12px;
-        font-size: 0.72rem;
-        color: #8fb4cc;
-        min-height: 80px;
-      ">// stats will appear here</div>
+      <div id="stats-result" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:0.72rem;color:#8fb4cc;min-height:80px;">// stats will appear here</div>
+
+      <!-- Student: My Attendance -->
+      <div class="student-only" style="display:flex;flex-direction:column;gap:10px;">
+        <div class="card-header" style="margin-top:4px;">
+          <span class="tag tag-query">My</span>
+          <span class="card-title">My Attendance</span>
+        </div>
+        <button id="btn-my-attendance" class="btn-primary">▶ Load My Attendance</button>
+        <div id="my-attendance-result">// your attendance records will appear here</div>
+      </div>
     </div>
 
-    <!-- ── Mutations (tabbed) ── -->
-    <div class="card mutation-tabs">
+    <!-- ── Mutations (tabbed) — TEACHER only ── -->
+    <div class="card mutation-tabs teacher-only">
       <div class="card-header">
         <span class="tag tag-mutation">Mutation</span>
         <span class="card-title">Actions</span>
       </div>
 
-      <!-- Tab bar -->
       <div class="tabs">
         <button class="tab tab-active" data-tab="single">Mark Single</button>
         <button class="tab" data-tab="bulk">Bulk Mark</button>
         <button class="tab" data-tab="enrollment">Enrollment</button>
       </div>
 
-      <!-- Single mark panel -->
+      <!-- Single mark -->
       <div class="panel" data-panel="single">
         <div class="field">
           <label>Student ID (ObjectId)</label>
@@ -86,8 +147,9 @@
           <input id="mut-sessionId" placeholder="6a025..." />
         </div>
         <div class="field">
-          <label>Status</label>
+          <label>Status (leave empty to auto-detect LATE)</label>
           <select id="mut-status">
+            <option value="">AUTO-DETECT</option>
             <option value="PRESENT">PRESENT</option>
             <option value="ABSENT">ABSENT</option>
             <option value="LATE">LATE</option>
@@ -97,7 +159,7 @@
         <pre id="mutation-result">// result will appear here</pre>
       </div>
 
-      <!-- Bulk mark panel -->
+      <!-- Bulk mark -->
       <div class="panel hidden" data-panel="bulk">
         <div class="field">
           <label>Session ID (ObjectId)</label>
@@ -108,18 +170,10 @@
           <textarea id="bulk-records" placeholder="6a025...,PRESENT&#10;6a026...,LATE&#10;6a027...,ABSENT"></textarea>
         </div>
         <div><button id="btn-bulk" class="btn-primary">▶ Bulk Mark</button></div>
-        <div id="bulk-result" style="
-          background: var(--bg);
-          border: 1px solid var(--border);
-          border-radius: 6px;
-          padding: 12px;
-          font-size: 0.72rem;
-          color: #8fb4cc;
-          min-height: 60px;
-        ">// bulk result will appear here</div>
+        <div id="bulk-result" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:0.72rem;color:#8fb4cc;min-height:60px;">// bulk result will appear here</div>
       </div>
 
-      <!-- Enrollment panel -->
+      <!-- Enrollment -->
       <div class="panel hidden" data-panel="enrollment">
         <div class="field">
           <label>Student ID (ObjectId)</label>
@@ -139,8 +193,30 @@
       </div>
     </div>
 
+    <!-- ── Export — TEACHER only ── -->
+    <div class="card teacher-only">
+      <div class="card-header">
+        <span class="tag tag-export">Export</span>
+        <span class="card-title">Excel Export</span>
+      </div>
+
+      <div style="font-size:0.75rem; color:var(--muted);">Download attendance data as .xlsx</div>
+
+      <div>
+        <button id="btn-export-stats" style="border-color:var(--yellow); color:var(--yellow);">⬇ All Student Stats</button>
+      </div>
+
+      <div class="field">
+        <label>Session ID for session export</label>
+        <input id="export-sessionId" placeholder="paste session ObjectId..." />
+      </div>
+      <div>
+        <button id="btn-export-session" style="border-color:var(--yellow); color:var(--yellow);">⬇ Session Attendance</button>
+      </div>
+    </div>
+
     <!-- ── Subscriptions ── -->
-    <div class="card">
+    <div class="card full-width">
       <div class="card-header">
         <span class="tag tag-sub">Subscription</span>
         <span class="card-title">Real-time Feed</span>
@@ -152,7 +228,7 @@
 
       <div class="sub-controls">
         <div class="field">
-          <label>Session ID (leave empty for all)</label>
+          <label>Session ID (leave empty for all sessions)</label>
           <input id="sub-sessionId" placeholder="paste session ObjectId or leave empty..." />
         </div>
         <button id="sub-btn" class="btn-primary">▶ Start Subscription</button>

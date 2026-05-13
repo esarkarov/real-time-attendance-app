@@ -1,8 +1,38 @@
 export const typeDefs = `#graphql
+
+  # ─── Enums ─────────────────────────────────────────────────────────────────
+
   enum AttendanceStatus {
     PRESENT
     ABSENT
     LATE
+  }
+
+  enum UserRole {
+    TEACHER
+    STUDENT
+  }
+
+  enum SessionStatus {
+    UPCOMING
+    ONGOING
+    CLOSED
+  }
+
+  # ─── Types ─────────────────────────────────────────────────────────────────
+
+  type User {
+    id: ID!
+    name: String!
+    email: String!
+    role: UserRole!
+    studentId: ID
+    createdAt: String!
+  }
+
+  type AuthPayload {
+    token: String!
+    user: User!
   }
 
   type Student {
@@ -26,6 +56,8 @@ export const typeDefs = `#graphql
     course: Course!
     date: String!
     location: String!
+    status: SessionStatus!
+    lateThresholdMinutes: Int!
     createdAt: String!
   }
 
@@ -46,7 +78,6 @@ export const typeDefs = `#graphql
     records: [AttendanceRecord!]!
   }
 
-  # Feature 4 - Student attendance statistics
   type StudentStats {
     student: Student!
     totalSessions: Int!
@@ -56,13 +87,11 @@ export const typeDefs = `#graphql
     attendanceRate: Float!
   }
 
-  # Feature 3 - Bulk mark input
   input BulkAttendanceInput {
     studentId: ID!
     status: AttendanceStatus!
   }
 
-  # Feature 3 - Bulk mark result
   type BulkAttendanceResult {
     successful: [AttendanceRecord!]!
     failed: [BulkAttendanceError!]!
@@ -73,7 +102,6 @@ export const typeDefs = `#graphql
     reason: String!
   }
 
-  # Feature 5 - Enrollment
   type Enrollment {
     id: ID!
     student: Student!
@@ -84,26 +112,24 @@ export const typeDefs = `#graphql
   # ─── Queries ───────────────────────────────────────────────────────────────
 
   type Query {
-    # Students — Feature 2: pagination
+    me: User!
+
     students(limit: Int, offset: Int): [Student!]!
     student(id: ID!): Student
 
-    # Courses — Feature 2: pagination
     courses(limit: Int, offset: Int): [Course!]!
     course(id: ID!): Course
 
-    # Sessions — Feature 2: pagination
-    sessions(courseId: ID, limit: Int, offset: Int): [Session!]!
+    # Sessions can be filtered by status
+    sessions(courseId: ID, status: SessionStatus, limit: Int, offset: Int): [Session!]!
     session(id: ID!): Session
 
-    # Attendance — Feature 2: pagination
     attendanceBySession(sessionId: ID!, limit: Int, offset: Int): AttendanceSummary!
     attendanceByStudent(studentId: ID!, limit: Int, offset: Int): [AttendanceRecord!]!
+    myAttendance(limit: Int, offset: Int): [AttendanceRecord!]!
 
-    # Feature 4 - Student stats
     studentStats(studentId: ID!): StudentStats!
 
-    # Feature 5 - Enrollment queries
     enrollmentsByStudent(studentId: ID!): [Enrollment!]!
     enrollmentsByCourse(courseId: ID!): [Enrollment!]!
   }
@@ -111,26 +137,30 @@ export const typeDefs = `#graphql
   # ─── Mutations ─────────────────────────────────────────────────────────────
 
   type Mutation {
-    # Students — Feature 1: email validation
+    # Auth — public
+    register(name: String!, email: String!, password: String!, role: UserRole!, studentId: ID): AuthPayload!
+    login(email: String!, password: String!): AuthPayload!
+
+    # Students — TEACHER only
     createStudent(name: String!, email: String!, studentId: String!): Student!
     deleteStudent(id: ID!): Boolean!
 
-    # Courses
+    # Courses — TEACHER only
     createCourse(name: String!, code: String!, instructor: String!): Course!
     deleteCourse(id: ID!): Boolean!
 
-    # Sessions — Feature 1: prevent past sessions
-    createSession(courseId: ID!, date: String!, location: String!): Session!
+    # Sessions — TEACHER only
+    createSession(courseId: ID!, date: String!, location: String!, lateThresholdMinutes: Int): Session!
     deleteSession(id: ID!): Boolean!
+    openSession(id: ID!): Session!    # UPCOMING → ONGOING
+    closeSession(id: ID!): Session!   # ONGOING  → CLOSED
 
-    # Attendance — Feature 1: validates enrollment
-    markAttendance(studentId: ID!, sessionId: ID!, status: AttendanceStatus!): AttendanceRecord!
+    # Attendance — TEACHER only (session must be ONGOING)
+    markAttendance(studentId: ID!, sessionId: ID!, status: AttendanceStatus): AttendanceRecord!
     updateAttendance(id: ID!, status: AttendanceStatus!): AttendanceRecord!
-
-    # Feature 3 - Bulk mark attendance
     markAttendanceBulk(sessionId: ID!, records: [BulkAttendanceInput!]!): BulkAttendanceResult!
 
-    # Feature 5 - Enrollment mutations
+    # Enrollment — TEACHER only
     enrollStudent(studentId: ID!, courseId: ID!): Enrollment!
     unenrollStudent(studentId: ID!, courseId: ID!): Boolean!
   }
