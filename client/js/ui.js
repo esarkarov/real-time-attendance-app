@@ -1,197 +1,418 @@
-// ui.js — DOM helpers and rendering utilities
+// ui.js — rendering and DOM utilities
 
-// ── Generic ───────────────────────────────────────────────────────────────────
+import { toast } from './toast.js';
 
-export function showResult(elementId, data) {
-  document.getElementById(elementId).textContent = JSON.stringify(data, null, 2);
-}
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-export function showError(elementId, message) {
-  document.getElementById(elementId).textContent = `// Error: ${message}`;
-}
-
-// ── Auth UI ───────────────────────────────────────────────────────────────────
-
-export function renderAuthUser(user) {
-  const el = document.getElementById('auth-user');
-  if (!user) {
-    el.innerHTML = `<span class="auth-guest">Not logged in</span>`;
-    document.getElementById('auth-panel').classList.remove('hidden');
-    document.getElementById('app-grid').classList.add('hidden');
-    return;
+export function setLoading(btnId, loading) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  if (loading) {
+    btn.dataset.origText = btn.innerHTML;
+    btn.innerHTML = `<span class="spinner"></span> Loading...`;
+    btn.disabled = true;
+  } else {
+    btn.innerHTML = btn.dataset.origText || btn.innerHTML;
+    btn.disabled = false;
   }
-  const roleColor = user.role === 'TEACHER' ? 'var(--purple)' : 'var(--green)';
-  el.innerHTML = `
-    <span style="color:${roleColor}; font-weight:600;">${user.name}</span>
-    <span class="auth-role">${user.role}</span>
-    <span class="auth-email">${user.email}</span>
-    <button id="btn-logout" class="btn-danger" style="padding:4px 10px; font-size:0.7rem;">Logout</button>
-  `;
-  document.getElementById('auth-panel').classList.add('hidden');
-  document.getElementById('app-grid').classList.remove('hidden');
+}
 
-  // Show/hide teacher-only sections
-  const teacherOnly = document.querySelectorAll('.teacher-only');
-  const studentOnly = document.querySelectorAll('.student-only');
-  teacherOnly.forEach(el => el.classList.toggle('hidden', user.role !== 'TEACHER'));
-  studentOnly.forEach(el => el.classList.toggle('hidden', user.role !== 'STUDENT'));
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => toast.info('Copied!'));
+}
 
-  document.getElementById('btn-logout')?.addEventListener('click', () => {
-    window.dispatchEvent(new CustomEvent('logout'));
+function idCell(id) {
+  const short = id.slice(-8);
+  return `<div class="id-cell"><span class="mono">${short}</span><button class="copy-btn" onclick="navigator.clipboard.writeText('${id}').then(()=>window.showToastInfo('Copied!'))" title="Copy full ID">⧉</button></div>`;
+}
+
+function statusBadge(status) {
+  const map = {
+    UPCOMING: 'badge-blue',
+    ONGOING:  'badge-green',
+    CLOSED:   'badge-muted',
+    PRESENT:  'badge-green',
+    ABSENT:   'badge-red',
+    LATE:     'badge-amber',
+    TEACHER:  'badge-purple',
+    STUDENT:  'badge-green',
+  };
+  return `<span class="badge ${map[status] ?? 'badge-muted'}">${status}</span>`;
+}
+
+function formatDate(ts) {
+  const d = new Date(parseInt(ts));
+  return isNaN(d) ? ts : d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+function formatDateTime(ts) {
+  const d = new Date(parseInt(ts));
+  return isNaN(d) ? ts : d.toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+export function showAuthScreen() {
+  document.getElementById('auth-screen').classList.remove('hidden');
+  document.getElementById('app').classList.add('hidden');
+}
+
+export function showApp(user) {
+  document.getElementById('auth-screen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+
+  // Sidebar user info
+  const initials = user.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  const roleClass = user.role === 'TEACHER' ? 'teacher' : 'student';
+  document.getElementById('sidebar-user-avatar').textContent = initials;
+  document.getElementById('sidebar-user-avatar').className = `user-avatar ${roleClass}`;
+  document.getElementById('sidebar-user-name').textContent = user.name;
+  document.getElementById('sidebar-user-role').textContent = user.role;
+
+  // Hide teacher-only nav items for students
+  document.querySelectorAll('.teacher-nav').forEach(el => {
+    el.classList.toggle('hidden', user.role !== 'TEACHER');
+  });
+  document.querySelectorAll('.student-nav').forEach(el => {
+    el.classList.toggle('hidden', user.role !== 'STUDENT');
   });
 }
 
-export function setAuthError(msg) {
-  const el = document.getElementById('auth-error');
+export function setAuthError(msg, type = "login") {
+  const id = type === "register" ? "reg-error" : "auth-error";
+  const el = document.getElementById(id);
   el.textContent = msg;
   el.classList.toggle('hidden', !msg);
 }
 
-// ── WebSocket ─────────────────────────────────────────────────────────────────
+// ── Navigation ────────────────────────────────────────────────────────────────
 
-export function setWsStatus(connected) {
-  const dot   = document.getElementById('ws-dot');
-  const label = document.getElementById('ws-label');
-  dot.className     = connected ? 'ws-dot connected' : 'ws-dot';
-  label.textContent = connected ? 'connected' : 'disconnected';
+export function navigateTo(pageId) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const page = document.getElementById(`page-${pageId}`);
+  if (page) page.classList.add('active');
+  const navItem = document.querySelector(`[data-page="${pageId}"]`);
+  if (navItem) navItem.classList.add('active');
 }
 
-export function setSubButton(active) {
-  const btn = document.getElementById('sub-btn');
-  btn.textContent = active ? '■ Stop' : '▶ Start Subscription';
-  btn.className   = active ? 'btn-active' : 'btn-primary';
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+export function renderDashboard(students, sessions, attendanceRecords) {
+  const totalStudents  = students?.data?.students?.length ?? 0;
+  const totalSessions  = sessions?.data?.sessions?.length ?? 0;
+  const ongoingSessions = sessions?.data?.sessions?.filter(s => s.status === 'ONGOING').length ?? 0;
+
+  document.getElementById('dash-students').textContent  = totalStudents;
+  document.getElementById('dash-sessions').textContent  = totalSessions;
+  document.getElementById('dash-ongoing').textContent   = ongoingSessions;
 }
+
+// ── Students table ────────────────────────────────────────────────────────────
+
+export function renderStudents(data, onDelete, onViewStats) {
+  const tbody = document.getElementById('students-tbody');
+  const students = data?.data?.students ?? [];
+
+  if (!students.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">👤</div>No students yet</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = students.map((s, i) => `
+    <tr>
+      <td class="td-muted">${i + 1}</td>
+      <td><span class="fw-600">${s.name}</span></td>
+      <td class="td-mono">${s.studentId}</td>
+      <td class="td-muted">${s.email}</td>
+      <td>${idCell(s.id)}</td>
+      <td>
+        <button class="btn btn-sm" onclick="window._viewStudentStats('${s.id}')">📊 Stats</button>
+        <button class="btn btn-sm btn-danger" onclick="window._deleteStudent('${s.id}')">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+
+  window._deleteStudent = onDelete;
+  window._viewStudentStats = onViewStats;
+}
+
+// ── Courses table ─────────────────────────────────────────────────────────────
+
+export function renderCourses(data, onDelete) {
+  const tbody = document.getElementById('courses-tbody');
+  const courses = data?.data?.courses ?? [];
+
+  if (!courses.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">📚</div>No courses yet</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = courses.map((c, i) => `
+    <tr>
+      <td class="td-muted">${i + 1}</td>
+      <td><span class="fw-600">${c.name}</span></td>
+      <td>${statusBadge('TEACHER').replace('TEACHER', c.code)}<span class="badge badge-blue">${c.code}</span></td>
+      <td class="td-muted">${c.instructor}</td>
+      <td>${idCell(c.id)}</td>
+      <td>
+        <button class="btn btn-sm btn-danger" onclick="window._deleteCourse('${c.id}')">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+
+  window._deleteCourse = onDelete;
+}
+
+// ── Sessions table ────────────────────────────────────────────────────────────
+
+export function renderSessions(data, { onOpen, onClose, onExport, onDelete, onViewSummary }) {
+  const tbody = document.getElementById('sessions-tbody');
+  const sessions = data?.data?.sessions ?? [];
+
+  if (!sessions.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">📅</div>No sessions yet</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = sessions.map((s, i) => {
+    const actions = [];
+    if (s.status === 'UPCOMING') actions.push(`<button class="btn btn-sm btn-success" onclick="window._openSession('${s.id}')">▶ Open</button>`);
+    if (s.status === 'ONGOING')  actions.push(`<button class="btn btn-sm btn-danger"  onclick="window._closeSession('${s.id}')">■ Close</button>`);
+    actions.push(`<button class="btn btn-sm" onclick="window._viewSummary('${s.id}')">Summary</button>`);
+    actions.push(`<button class="btn btn-sm btn-amber" onclick="window._exportSession('${s.id}')">⬇ Export</button>`);
+
+    return `
+      <tr>
+        <td class="td-muted">${i + 1}</td>
+        <td><span class="fw-600">${s.course.code}</span><span class="td-muted"> — ${s.course.name}</span></td>
+        <td class="td-muted">${formatDateTime(s.date)}</td>
+        <td class="td-muted">${s.location}</td>
+        <td>${statusBadge(s.status)}</td>
+        <td>${idCell(s.id)}</td>
+        <td><div class="btn-group">${actions.join('')}</div></td>
+      </tr>
+    `;
+  }).join('');
+
+  window._openSession   = onOpen;
+  window._closeSession  = onClose;
+  window._exportSession = onExport;
+  window._viewSummary   = onViewSummary;
+}
+
+// ── Attendance summary ────────────────────────────────────────────────────────
+
+export function renderAttendanceSummary(data) {
+  const el = document.getElementById('summary-result');
+  if (!data?.data?.attendanceBySession) { el.innerHTML = ''; return; }
+
+  const { totalPresent, totalAbsent, totalLate, session, records } = data.data.attendanceBySession;
+  const total = totalPresent + totalAbsent + totalLate;
+  const rate  = total > 0 ? Math.round(((totalPresent + totalLate) / total) * 100) : 0;
+  const barColor = rate >= 75 ? 'green' : rate >= 50 ? 'amber' : 'red';
+
+  el.innerHTML = `
+    <div class="section" style="margin-top:16px;">
+      <div class="section-header">
+        <span class="section-title">${session.course.name} — ${formatDate(session.date)} @ ${session.location}</span>
+        ${statusBadge(session.status)}
+      </div>
+      <div class="section-body">
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px;">
+          <div class="stat-card green"><div class="stat-label">Present</div><div class="stat-value">${totalPresent}</div></div>
+          <div class="stat-card amber"><div class="stat-label">Late</div><div class="stat-value">${totalLate}</div></div>
+          <div class="stat-card red"><div class="stat-label">Absent</div><div class="stat-value">${totalAbsent}</div></div>
+          <div class="stat-card blue"><div class="stat-label">Rate</div><div class="stat-value">${rate}%</div></div>
+        </div>
+        <div class="progress-wrap" style="margin-bottom:16px;">
+          <div class="progress-bar ${barColor}" style="width:${rate}%"></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Student</th><th>ID</th><th>Status</th><th>Marked At</th></tr></thead>
+            <tbody>
+              ${records.map((r,i) => `
+                <tr>
+                  <td class="td-muted">${i+1}</td>
+                  <td class="fw-600">${r.student.name}</td>
+                  <td class="td-mono">${r.student.studentId}</td>
+                  <td>${statusBadge(r.status)}</td>
+                  <td class="td-muted">${formatDateTime(r.markedAt)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Student stats ─────────────────────────────────────────────────────────────
+
+export function renderStudentStats(data) {
+  const el = document.getElementById('stats-result');
+  if (!data?.data?.studentStats) { el.innerHTML = ''; return; }
+
+  const s    = data.data.studentStats;
+  const rate = s.attendanceRate.toFixed(1);
+  const bar  = Math.round(s.attendanceRate);
+  const barColor = bar >= 75 ? 'green' : bar >= 50 ? 'amber' : 'red';
+
+  el.innerHTML = `
+    <div class="section" style="margin-top:16px;">
+      <div class="section-header">
+        <span class="section-title">${s.student.name}</span>
+        <span class="badge badge-blue">${s.student.studentId}</span>
+        <span class="text-muted text-sm">${s.student.email}</span>
+      </div>
+      <div class="section-body">
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px;">
+          <div class="stat-card green"><div class="stat-label">Present</div><div class="stat-value">${s.present}</div></div>
+          <div class="stat-card amber"><div class="stat-label">Late</div><div class="stat-value">${s.late}</div></div>
+          <div class="stat-card red"><div class="stat-label">Absent</div><div class="stat-value">${s.absent}</div></div>
+          <div class="stat-card blue"><div class="stat-label">Total</div><div class="stat-value">${s.totalSessions}</div></div>
+        </div>
+        <div class="flex items-center gap-8" style="margin-bottom:6px;">
+          <span class="text-sm text-muted">Attendance Rate</span>
+          <span class="fw-600" style="color:var(--${barColor})">${rate}%</span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-bar ${barColor}" style="width:${bar}%"></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── My Attendance (student) ───────────────────────────────────────────────────
+
+export function renderMyAttendance(data) {
+  const tbody = document.getElementById('my-attendance-tbody');
+  const records = data?.data?.myAttendance ?? [];
+
+  if (!records.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">📋</div>No attendance records yet</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = records.map((r, i) => `
+    <tr>
+      <td class="td-muted">${i + 1}</td>
+      <td class="fw-600">${r.session.course.name}</td>
+      <td class="td-mono">${r.session.course.code}</td>
+      <td class="td-muted">${r.session.location}</td>
+      <td>${statusBadge(r.status)}</td>
+      <td class="td-muted">${formatDateTime(r.markedAt)}</td>
+    </tr>
+  `).join('');
+}
+
+// ── Bulk result ───────────────────────────────────────────────────────────────
+
+export function renderBulkResult(data) {
+  const el = document.getElementById('bulk-result');
+  if (!data?.data?.markAttendanceBulk) return;
+
+  const { successful, failed } = data.data.markAttendanceBulk;
+
+  let html = `<div class="flex gap-8 items-center" style="margin-bottom:10px;">
+    <span class="badge badge-green">✓ ${successful.length} marked</span>
+    ${failed.length ? `<span class="badge badge-red">✕ ${failed.length} failed</span>` : ''}
+  </div>`;
+
+  if (successful.length) {
+    html += `<div class="table-wrap"><table>
+      <thead><tr><th>Student</th><th>ID</th><th>Status</th></tr></thead>
+      <tbody>
+        ${successful.map(r => `<tr><td class="fw-600">${r.student.name}</td><td class="td-mono">${r.student.studentId}</td><td>${statusBadge(r.status)}</td></tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  }
+
+  if (failed.length) {
+    html += `<div style="margin-top:10px;">
+      ${failed.map(f => `<div style="padding:6px 0; border-bottom:1px solid var(--border); font-size:0.8rem; color:var(--red);">✕ <span class="mono">${f.studentId.slice(-8)}</span> — ${f.reason}</div>`).join('')}
+    </div>`;
+  }
+
+  el.innerHTML = html;
+  el.classList.remove('hidden');
+}
+
+// ── Real-time feed ────────────────────────────────────────────────────────────
 
 export function appendFeedEvent(record) {
   const feed  = document.getElementById('feed');
   const empty = feed.querySelector('.feed-empty');
   if (empty) empty.remove();
 
-  const time  = new Date().toLocaleTimeString();
   const entry = document.createElement('div');
-  entry.className = 'log-entry';
+  entry.className = 'feed-entry';
   entry.innerHTML = `
-    <span class="log-time">${time}</span>
-    <span class="log-name">${record.student?.name ?? '?'}</span>
-    <span class="log-arrow">→</span>
-    <span class="log-status-${record.status}">${record.status}</span>
-    <span class="log-location">@ ${record.session?.location ?? '?'}</span>
+    <span class="feed-time">${new Date().toLocaleTimeString()}</span>
+    <span class="feed-name">${record.student?.name ?? '?'}</span>
+    ${statusBadge(record.status)}
+    <span class="feed-loc">@ ${record.session?.location ?? '?'}</span>
   `;
-  feed.prepend(entry);
+  feed.insertBefore(entry, feed.firstChild);
 }
 
 export function appendFeedError(payload) {
   const feed  = document.getElementById('feed');
-  const time  = new Date().toLocaleTimeString();
   const entry = document.createElement('div');
-  entry.className = 'log-entry';
-  entry.innerHTML = `<span class="log-time">${time}</span><span class="log-error">ERROR: ${JSON.stringify(payload)}</span>`;
-  feed.prepend(entry);
+  entry.className = 'feed-entry';
+  entry.innerHTML = `<span class="feed-time">${new Date().toLocaleTimeString()}</span><span style="color:var(--red);">ERROR: ${JSON.stringify(payload)}</span>`;
+  feed.insertBefore(entry, feed.firstChild);
 }
 
-// ── Tabs ──────────────────────────────────────────────────────────────────────
-
-export function initTabs(containerSelector) {
-  const container = document.querySelector(containerSelector);
-  if (!container) return;
-  const tabs   = container.querySelectorAll('[data-tab]');
-  const panels = container.querySelectorAll('[data-panel]');
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      tabs.forEach(t => t.classList.remove('tab-active'));
-      panels.forEach(p => p.classList.add('hidden'));
-      tab.classList.add('tab-active');
-      container.querySelector(`[data-panel="${tab.dataset.tab}"]`)?.classList.remove('hidden');
-    });
-  });
+export function setWsStatus(connected) {
+  const dot   = document.getElementById('ws-dot');
+  const label = document.getElementById('ws-label');
+  if (dot)   dot.className   = connected ? 'ws-dot on' : 'ws-dot';
+  if (label) label.textContent = connected ? 'Live' : 'Disconnected';
 }
 
-// ── Session status badge ──────────────────────────────────────────────────────
-
-function statusBadge(status) {
-  const colors = { UPCOMING: 'var(--accent)', ONGOING: 'var(--green)', CLOSED: 'var(--muted)' };
-  return `<span style="color:${colors[status] ?? 'var(--text)'}; font-weight:600;">${status}</span>`;
+export function setSubButton(active) {
+  const btn = document.getElementById('sub-btn');
+  if (!btn) return;
+  btn.textContent = active ? '■ Stop' : '▶ Start';
+  btn.className   = active ? 'btn btn-danger' : 'btn btn-success';
 }
 
-// ── Sessions renderer ─────────────────────────────────────────────────────────
+// ── Enrollments ───────────────────────────────────────────────────────────────
 
-export function renderSessions(data) {
-  const el = document.getElementById('query-result');
-  if (!data?.data?.sessions) { el.textContent = JSON.stringify(data, null, 2); return; }
-  const sessions = data.data.sessions;
-  if (!sessions.length) { el.textContent = '// No sessions found'; return; }
+export function renderEnrollments(data, type) {
+  const el = document.getElementById('enroll-result');
 
-  el.innerHTML = sessions.map(s => `
-    <div class="session-row">
-      <div class="session-info">
-        <span class="session-course">${s.course.code}</span>
-        <span class="session-date">${new Date(parseInt(s.date)).toLocaleString()}</span>
-        <span class="session-loc">📍 ${s.location}</span>
-        ${statusBadge(s.status)}
-      </div>
-      <div class="session-id">ID: <code>${s.id}</code></div>
-      <div class="session-actions teacher-only" style="display:flex; gap:6px; margin-top:6px;">
-        <button onclick="window.dispatchEvent(new CustomEvent('openSession', {detail:'${s.id}'}))">▶ Open</button>
-        <button onclick="window.dispatchEvent(new CustomEvent('closeSession', {detail:'${s.id}'}))" class="btn-danger">■ Close</button>
-        <button onclick="window.dispatchEvent(new CustomEvent('exportSession', {detail:'${s.id}'}))" style="border-color:var(--yellow); color:var(--yellow);">⬇ Export</button>
-      </div>
-    </div>
-  `).join('<hr style="border-color:var(--border); margin:6px 0;">');
-}
-
-// ── My Attendance renderer ────────────────────────────────────────────────────
-
-export function renderMyAttendance(data) {
-  const el = document.getElementById('my-attendance-result');
-  if (!data?.data?.myAttendance) { el.textContent = JSON.stringify(data, null, 2); return; }
-  const records = data.data.myAttendance;
-  if (!records.length) { el.textContent = '// No attendance records yet'; return; }
-
-  el.innerHTML = records.map(r => `
-    <div class="log-entry">
-      <span class="log-time">${new Date(parseInt(r.markedAt)).toLocaleDateString()}</span>
-      <span class="log-name">${r.session.course.name}</span>
-      <span class="log-arrow">→</span>
-      <span class="log-status-${r.status}">${r.status}</span>
-      <span class="log-location">@ ${r.session.location}</span>
-    </div>
-  `).join('');
-}
-
-// ── Stats renderer ────────────────────────────────────────────────────────────
-
-export function renderStats(data) {
-  const el = document.getElementById('stats-result');
-  if (!data?.data?.studentStats) { el.textContent = JSON.stringify(data, null, 2); return; }
-  const s    = data.data.studentStats;
-  const rate = s.attendanceRate.toFixed(1);
-  const bar  = Math.round(s.attendanceRate);
-  el.innerHTML = `
-    <div class="stats-card">
-      <div class="stats-name">${s.student.name} <span class="stats-id">${s.student.studentId}</span></div>
-      <div class="stats-email">${s.student.email}</div>
-      <div class="stats-bar-wrap"><div class="stats-bar" style="width:${bar}%"></div></div>
-      <div class="stats-rate">${rate}% attendance rate</div>
-      <div class="stats-grid">
-        <div class="stat present"><span>${s.present}</span>Present</div>
-        <div class="stat late"><span>${s.late}</span>Late</div>
-        <div class="stat absent"><span>${s.absent}</span>Absent</div>
-        <div class="stat total"><span>${s.totalSessions}</span>Total</div>
-      </div>
-    </div>
-  `;
-}
-
-// ── Bulk result renderer ──────────────────────────────────────────────────────
-
-export function renderBulkResult(data) {
-  const el = document.getElementById('bulk-result');
-  if (!data?.data?.markAttendanceBulk) { el.textContent = JSON.stringify(data, null, 2); return; }
-  const { successful, failed } = data.data.markAttendanceBulk;
-  let html = `<div class="bulk-summary"><span class="bulk-ok">✓ ${successful.length} marked</span>`;
-  if (failed.length) html += `<span class="bulk-fail">✗ ${failed.length} failed</span>`;
-  html += `</div>`;
-  html += successful.map(r => `<div class="bulk-row ok">✓ ${r.student.name} → <span class="log-status-${r.status}">${r.status}</span></div>`).join('');
-  html += failed.map(f => `<div class="bulk-row fail">✗ ${f.studentId} — ${f.reason}</div>`).join('');
-  el.innerHTML = html;
+  if (type === 'student') {
+    const enrollments = data?.data?.enrollmentsByStudent ?? [];
+    if (!enrollments.length) { el.innerHTML = '<div class="empty-state">No enrollments found</div>'; return; }
+    el.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>Course</th><th>Code</th><th>Instructor</th><th>Enrolled</th></tr></thead>
+      <tbody>
+        ${enrollments.map(e => `<tr>
+          <td class="fw-600">${e.course.name}</td>
+          <td><span class="badge badge-blue">${e.course.code}</span></td>
+          <td class="td-muted">${e.course.instructor}</td>
+          <td class="td-muted">${formatDate(e.enrolledAt)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  } else {
+    const enrollments = data?.data?.enrollmentsByCourse ?? [];
+    if (!enrollments.length) { el.innerHTML = '<div class="empty-state">No enrollments found</div>'; return; }
+    el.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>Student</th><th>ID</th><th>Email</th><th>Enrolled</th></tr></thead>
+      <tbody>
+        ${enrollments.map(e => `<tr>
+          <td class="fw-600">${e.student.name}</td>
+          <td class="td-mono">${e.student.studentId}</td>
+          <td class="td-muted">${e.student.email}</td>
+          <td class="td-muted">${formatDate(e.enrolledAt)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  }
 }

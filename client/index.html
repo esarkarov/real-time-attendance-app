@@ -1,246 +1,877 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Real-time Attendance System</title>
-  <link rel="stylesheet" href="css/styles.css" />
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Real-time Attendance System</title>
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <!-- ── Toast container ── -->
+    <div id="toast-container"></div>
 
-  <header>
-    <h1>🎓 Real-time <span>Attendance</span> System</h1>
-    <span class="header-meta">GraphQL · WebSocket · MongoDB</span>
-    <div id="auth-user"></div>
-  </header>
-
-  <!-- ── Auth Panel (shown when logged out) ── -->
-  <div id="auth-panel" class="card" style="max-width:440px; margin: 0 auto 32px;">
-    <div class="card-header">
-      <span class="tag tag-auth">Auth</span>
-      <span class="card-title">Sign In / Register</span>
-    </div>
-
-    <div class="tabs">
-      <button class="tab tab-active" data-auth-tab="login">Login</button>
-      <button class="tab" data-auth-tab="register">Register</button>
-    </div>
-
-    <!-- Login panel -->
-    <div class="panel" data-auth-panel="login">
-      <div class="field">
-        <label>Email</label>
-        <input id="auth-email" type="email" placeholder="martin@ufaz.az" />
-      </div>
-      <div class="field">
-        <label>Password</label>
-        <input id="auth-password" type="password" placeholder="••••••••" />
-      </div>
-      <button id="btn-login" class="btn-primary">▶ Login</button>
-    </div>
-
-    <!-- Register panel -->
-    <div class="panel hidden" data-auth-panel="register">
-      <div class="field">
-        <label>Full Name</label>
-        <input id="reg-name" placeholder="Prof. Martin" />
-      </div>
-      <div class="field">
-        <label>Email</label>
-        <input id="reg-email" type="email" placeholder="martin@ufaz.az" />
-      </div>
-      <div class="field">
-        <label>Password</label>
-        <input id="reg-password" type="password" placeholder="••••••••" />
-      </div>
-      <div class="field">
-        <label>Role</label>
-        <select id="reg-role">
-          <option value="TEACHER">TEACHER</option>
-          <option value="STUDENT">STUDENT</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Student ObjectId (only for STUDENT role)</label>
-        <input id="reg-studentId" placeholder="paste student ObjectId..." />
-      </div>
-      <button id="btn-register" class="btn-primary">▶ Register</button>
-    </div>
-
-    <div id="auth-error" class="auth-error hidden"></div>
-  </div>
-
-  <!-- ── Main App (shown when logged in) ── -->
-  <div id="app-grid" class="grid hidden">
-
-    <!-- ── Queries ── -->
-    <div class="card">
-      <div class="card-header">
-        <span class="tag tag-query">Query</span>
-        <span class="card-title">Fetch Data</span>
-      </div>
-
-      <div class="btn-group teacher-only">
-        <button id="btn-students">All Students</button>
-        <button id="btn-courses">All Courses</button>
-      </div>
-      <div class="btn-group">
-        <button id="btn-sessions">All Sessions</button>
-      </div>
-
-      <div class="field teacher-only">
-        <label>Session ID — Attendance Summary</label>
-        <input id="summarySessionId" placeholder="paste session ObjectId..." />
-      </div>
-      <div class="teacher-only"><button id="btn-summary">Attendance Summary</button></div>
-
-      <pre id="query-result">// results will appear here</pre>
-    </div>
-
-    <!-- ── Student Stats ── -->
-    <div class="card">
-      <div class="card-header">
-        <span class="tag tag-query">Query</span>
-        <span class="card-title">Student Stats</span>
-      </div>
-
-      <div class="field teacher-only">
-        <label>Student ID (ObjectId)</label>
-        <input id="stats-studentId" placeholder="paste student ObjectId..." />
-      </div>
-      <div class="teacher-only"><button id="btn-stats" class="btn-primary">▶ Get Stats</button></div>
-
-      <div id="stats-result" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:0.72rem;color:#8fb4cc;min-height:80px;">// stats will appear here</div>
-
-      <!-- Student: My Attendance -->
-      <div class="student-only" style="display:flex;flex-direction:column;gap:10px;">
-        <div class="card-header" style="margin-top:4px;">
-          <span class="tag tag-query">My</span>
-          <span class="card-title">My Attendance</span>
+    <!-- ════════════════════════════════════════════════════════════════════════════
+     AUTH SCREEN
+════════════════════════════════════════════════════════════════════════════ -->
+    <div id="auth-screen">
+      <div class="auth-box">
+        <div class="auth-logo">
+          <div class="auth-logo-icon">🎓</div>
+          <h1>Real-time Attendance</h1>
+          <p>GraphQL · WebSocket · MongoDB</p>
         </div>
-        <button id="btn-my-attendance" class="btn-primary">▶ Load My Attendance</button>
-        <div id="my-attendance-result">// your attendance records will appear here</div>
+
+        <div class="auth-card">
+          <div class="auth-tabs">
+            <button class="auth-tab active" data-auth-tab="login">
+              Sign In
+            </button>
+            <button class="auth-tab" data-auth-tab="register">Register</button>
+          </div>
+
+          <!-- Login -->
+          <div class="auth-form auth-form-panel" id="auth-panel-login">
+            <div class="field">
+              <label class="field-label">Email</label>
+              <input id="auth-email" type="email" placeholder="you@ufaz.az" />
+            </div>
+            <div class="field">
+              <label class="field-label">Password</label>
+              <input
+                id="auth-password"
+                type="password"
+                placeholder="••••••••"
+              />
+            </div>
+            <button id="btn-login" class="btn btn-primary">Sign In</button>
+            <div id="auth-error" class="auth-error hidden"></div>
+          </div>
+
+          <!-- Register (Teachers only) -->
+          <div
+            class="auth-form auth-form-panel hidden"
+            id="auth-panel-register"
+          >
+            <p
+              style="
+                font-size: 0.78rem;
+                color: var(--text-muted);
+                padding: 8px 0;
+              "
+            >
+              Teacher registration. Students are added by their teacher.
+            </p>
+            <div class="field">
+              <label class="field-label">Full Name</label>
+              <input id="reg-name" placeholder="Prof. Martin" />
+            </div>
+            <div class="field">
+              <label class="field-label">Email</label>
+              <input id="reg-email" type="email" placeholder="you@ufaz.az" />
+            </div>
+            <div class="field">
+              <label class="field-label">Password</label>
+              <input id="reg-password" type="password" placeholder="••••••••" />
+            </div>
+            <button id="btn-register" class="btn btn-primary">
+              Create Teacher Account
+            </button>
+            <div id="reg-error" class="auth-error hidden"></div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- ── Mutations (tabbed) — TEACHER only ── -->
-    <div class="card mutation-tabs teacher-only">
-      <div class="card-header">
-        <span class="tag tag-mutation">Mutation</span>
-        <span class="card-title">Actions</span>
-      </div>
+    <!-- ════════════════════════════════════════════════════════════════════════════
+     MAIN APP
+════════════════════════════════════════════════════════════════════════════ -->
+    <div id="app" class="hidden">
+      <!-- ── Sidebar ── -->
+      <nav id="sidebar">
+        <div class="sidebar-logo">
+          <div class="sidebar-logo-icon">🎓</div>
+          <div>
+            <div class="sidebar-logo-text">Attendance</div>
+            <div class="sidebar-logo-sub">Real-time System</div>
+          </div>
+        </div>
 
-      <div class="tabs">
-        <button class="tab tab-active" data-tab="single">Mark Single</button>
-        <button class="tab" data-tab="bulk">Bulk Mark</button>
-        <button class="tab" data-tab="enrollment">Enrollment</button>
-      </div>
+        <div class="sidebar-user">
+          <div id="sidebar-user-avatar" class="user-avatar teacher">??</div>
+          <div class="user-info">
+            <div id="sidebar-user-name" class="user-name">Loading...</div>
+            <div id="sidebar-user-role" class="user-role">—</div>
+          </div>
+        </div>
 
-      <!-- Single mark -->
-      <div class="panel" data-panel="single">
-        <div class="field">
-          <label>Student ID (ObjectId)</label>
-          <input id="mut-studentId" placeholder="6a025..." />
-        </div>
-        <div class="field">
-          <label>Session ID (ObjectId)</label>
-          <input id="mut-sessionId" placeholder="6a025..." />
-        </div>
-        <div class="field">
-          <label>Status (leave empty to auto-detect LATE)</label>
-          <select id="mut-status">
-            <option value="">AUTO-DETECT</option>
-            <option value="PRESENT">PRESENT</option>
-            <option value="ABSENT">ABSENT</option>
-            <option value="LATE">LATE</option>
-          </select>
-        </div>
-        <div><button id="btn-mark" class="btn-primary">▶ Mark Attendance</button></div>
-        <pre id="mutation-result">// result will appear here</pre>
-      </div>
+        <div class="sidebar-nav">
+          <span class="nav-section-label">Overview</span>
+          <button class="nav-item active" data-page="dashboard">
+            <span class="nav-icon">⊞</span> Dashboard
+          </button>
 
-      <!-- Bulk mark -->
-      <div class="panel hidden" data-panel="bulk">
-        <div class="field">
-          <label>Session ID (ObjectId)</label>
-          <input id="bulk-sessionId" placeholder="paste session ObjectId..." />
-        </div>
-        <div class="field">
-          <label>Records — one per line: studentId,STATUS</label>
-          <textarea id="bulk-records" placeholder="6a025...,PRESENT&#10;6a026...,LATE&#10;6a027...,ABSENT"></textarea>
-        </div>
-        <div><button id="btn-bulk" class="btn-primary">▶ Bulk Mark</button></div>
-        <div id="bulk-result" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:0.72rem;color:#8fb4cc;min-height:60px;">// bulk result will appear here</div>
-      </div>
+          <span class="nav-section-label teacher-nav">Management</span>
+          <button class="nav-item teacher-nav" data-page="students">
+            <span class="nav-icon">👤</span> Students
+          </button>
+          <button class="nav-item teacher-nav" data-page="courses">
+            <span class="nav-icon">📚</span> Courses
+          </button>
+          <button class="nav-item teacher-nav" data-page="sessions">
+            <span class="nav-icon">📅</span> Sessions
+          </button>
 
-      <!-- Enrollment -->
-      <div class="panel hidden" data-panel="enrollment">
-        <div class="field">
-          <label>Student ID (ObjectId)</label>
-          <input id="enroll-studentId" placeholder="paste student ObjectId..." />
+          <span class="nav-section-label">Attendance</span>
+          <button class="nav-item teacher-nav" data-page="attendance">
+            <span class="nav-icon">✓</span> Mark Attendance
+          </button>
+          <button class="nav-item student-nav" data-page="my-attendance">
+            <span class="nav-icon">📋</span> My Attendance
+          </button>
+          <button class="nav-item teacher-nav" data-page="stats">
+            <span class="nav-icon">📊</span> Stats
+          </button>
+          <button class="nav-item" data-page="live">
+            <span class="nav-icon">⚡</span> Live Feed
+          </button>
+
+          <span class="nav-section-label teacher-nav">Tools</span>
+          <button class="nav-item teacher-nav" data-page="enrollment">
+            <span class="nav-icon">🎓</span> Enrollment
+          </button>
+          <button class="nav-item teacher-nav" data-page="export">
+            <span class="nav-icon">⬇</span> Export
+          </button>
         </div>
-        <div class="field">
-          <label>Course ID (ObjectId)</label>
-          <input id="enroll-courseId" placeholder="paste course ObjectId..." />
+
+        <div class="sidebar-footer">
+          <button id="btn-logout" class="btn btn-danger" style="width: 100%">
+            Logout
+          </button>
         </div>
-        <div class="btn-group">
-          <button id="btn-enroll" class="btn-primary">✓ Enroll</button>
-          <button id="btn-unenroll" class="btn-danger">✗ Unenroll</button>
-          <button id="btn-enrollments-student">By Student</button>
-          <button id="btn-enrollments-course">By Course</button>
+      </nav>
+
+      <!-- ── Main ── -->
+      <main id="main">
+        <!-- ════ DASHBOARD ════ -->
+        <div id="page-dashboard" class="page active">
+          <div class="page-header">
+            <div class="page-title">Dashboard</div>
+            <div class="page-subtitle">System overview</div>
+          </div>
+          <div class="page-content">
+            <div class="stats-row">
+              <div class="stat-card blue">
+                <div class="stat-label">Students</div>
+                <div class="stat-value" id="dash-students">—</div>
+                <div class="stat-sub">Registered</div>
+              </div>
+              <div class="stat-card green">
+                <div class="stat-label">Sessions</div>
+                <div class="stat-value" id="dash-sessions">—</div>
+                <div class="stat-sub">Total</div>
+              </div>
+              <div class="stat-card amber">
+                <div class="stat-label">Ongoing</div>
+                <div class="stat-value" id="dash-ongoing">—</div>
+                <div class="stat-sub">Active now</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">System</div>
+                <div
+                  class="stat-value"
+                  style="font-size: 1rem; color: var(--green); margin-top: 4px"
+                >
+                  ● Online
+                </div>
+                <div class="stat-sub">GraphQL + WS</div>
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-header">
+                <span class="section-title">Quick Start</span>
+              </div>
+              <div
+                class="section-body"
+                style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px"
+              >
+                <div
+                  style="
+                    padding: 12px;
+                    background: var(--surface2);
+                    border-radius: var(--radius);
+                    border: 1px solid var(--border);
+                  "
+                >
+                  <div
+                    style="
+                      font-weight: 600;
+                      margin-bottom: 6px;
+                      font-size: 0.85rem;
+                    "
+                  >
+                    For Teachers
+                  </div>
+                  <ol
+                    style="
+                      font-size: 0.78rem;
+                      color: var(--text-muted);
+                      padding-left: 16px;
+                      display: flex;
+                      flex-direction: column;
+                      gap: 4px;
+                    "
+                  >
+                    <li>Create students and courses</li>
+                    <li>Enroll students in courses</li>
+                    <li>Create a session and open it</li>
+                    <li>Mark attendance individually or in bulk</li>
+                    <li>Export results to Excel</li>
+                  </ol>
+                </div>
+                <div
+                  style="
+                    padding: 12px;
+                    background: var(--surface2);
+                    border-radius: var(--radius);
+                    border: 1px solid var(--border);
+                  "
+                >
+                  <div
+                    style="
+                      font-weight: 600;
+                      margin-bottom: 6px;
+                      font-size: 0.85rem;
+                    "
+                  >
+                    For Students
+                  </div>
+                  <ol
+                    style="
+                      font-size: 0.78rem;
+                      color: var(--text-muted);
+                      padding-left: 16px;
+                      display: flex;
+                      flex-direction: column;
+                      gap: 4px;
+                    "
+                  >
+                    <li>Log in with credentials provided by your teacher</li>
+                    <li>View your attendance records</li>
+                    <li>Check your attendance rate</li>
+                    <li>Watch the live feed</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <pre id="enroll-result">// enrollment result will appear here</pre>
-      </div>
+
+        <!-- ════ STUDENTS ════ -->
+        <div id="page-students" class="page">
+          <div class="page-header">
+            <div class="page-title">Students</div>
+            <div class="page-subtitle">Manage student records</div>
+          </div>
+          <div class="page-content">
+            <div class="section">
+              <div class="section-header">
+                <span class="section-title">Add Student</span>
+              </div>
+              <div class="section-body">
+                <div class="form-grid">
+                  <div class="field">
+                    <label class="field-label">Full Name</label>
+                    <input id="new-student-name" placeholder="Elvin Sarkarov" />
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Student ID</label>
+                    <input id="new-student-id" placeholder="DSAI001" />
+                  </div>
+                  <div class="field span2">
+                    <label class="field-label">Email</label>
+                    <input
+                      id="new-student-email"
+                      type="email"
+                      placeholder="elvin@ufaz.az"
+                    />
+                  </div>
+                  <div class="field span2">
+                    <label class="field-label"
+                      >Initial Password
+                      <span class="text-muted"
+                        >— student uses this to log in</span
+                      ></label
+                    >
+                    <input
+                      id="new-student-password"
+                      type="password"
+                      placeholder="Set a password for the student"
+                    />
+                  </div>
+                </div>
+                <div style="margin-top: 12px">
+                  <button id="btn-create-student" class="btn btn-primary">
+                    + Add Student
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-header">
+                <span class="section-title">All Students</span>
+                <button id="btn-refresh-students" class="btn btn-sm">
+                  ↻ Refresh
+                </button>
+              </div>
+              <div class="section-body" style="padding: 0">
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Student ID</th>
+                        <th>Email</th>
+                        <th>ObjectId</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="students-tbody">
+                      <tr>
+                        <td colspan="6">
+                          <div class="empty-state">Click Refresh to load</div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════ COURSES ════ -->
+        <div id="page-courses" class="page">
+          <div class="page-header">
+            <div class="page-title">Courses</div>
+            <div class="page-subtitle">Manage course catalog</div>
+          </div>
+          <div class="page-content">
+            <div class="section">
+              <div class="section-header">
+                <span class="section-title">Add Course</span>
+              </div>
+              <div class="section-body">
+                <div class="form-grid">
+                  <div class="field">
+                    <label class="field-label">Course Name</label>
+                    <input
+                      id="new-course-name"
+                      placeholder="Distributed Programming"
+                    />
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Course Code</label>
+                    <input id="new-course-code" placeholder="PROG4" />
+                  </div>
+                  <div class="field span2">
+                    <label class="field-label">Instructor</label>
+                    <input
+                      id="new-course-instructor"
+                      placeholder="Prof. Martin"
+                    />
+                  </div>
+                </div>
+                <div style="margin-top: 12px">
+                  <button id="btn-create-course" class="btn btn-primary">
+                    + Add Course
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-header">
+                <span class="section-title">All Courses</span>
+                <button id="btn-refresh-courses" class="btn btn-sm">
+                  ↻ Refresh
+                </button>
+              </div>
+              <div class="section-body" style="padding: 0">
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Code</th>
+                        <th>Instructor</th>
+                        <th>ObjectId</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="courses-tbody">
+                      <tr>
+                        <td colspan="6">
+                          <div class="empty-state">Click Refresh to load</div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════ SESSIONS ════ -->
+        <div id="page-sessions" class="page">
+          <div class="page-header">
+            <div class="page-title">Sessions</div>
+            <div class="page-subtitle">Create and manage class sessions</div>
+          </div>
+          <div class="page-content">
+            <div class="section">
+              <div class="section-header">
+                <span class="section-title">Create Session</span>
+              </div>
+              <div class="section-body">
+                <div class="form-grid">
+                  <div class="field span2">
+                    <label class="field-label">Course</label>
+                    <select id="new-session-course">
+                      <option value="">Select course...</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Date & Time</label>
+                    <input id="new-session-date" type="datetime-local" />
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Location</label>
+                    <input id="new-session-location" placeholder="Room A101" />
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Late Threshold (minutes)</label>
+                    <input
+                      id="new-session-threshold"
+                      type="number"
+                      value="15"
+                      min="1"
+                      max="60"
+                    />
+                  </div>
+                </div>
+                <div style="margin-top: 12px">
+                  <button id="btn-create-session" class="btn btn-primary">
+                    + Create Session
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-header">
+                <span class="section-title">All Sessions</span>
+                <button id="btn-refresh-sessions" class="btn btn-sm">
+                  ↻ Refresh
+                </button>
+              </div>
+              <div class="section-body" style="padding: 0">
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Course</th>
+                        <th>Date</th>
+                        <th>Location</th>
+                        <th>Status</th>
+                        <th>ObjectId</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="sessions-tbody">
+                      <tr>
+                        <td colspan="7">
+                          <div class="empty-state">Click Refresh to load</div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════ ATTENDANCE ════ -->
+        <div id="page-attendance" class="page">
+          <div class="page-header">
+            <div class="page-title">Mark Attendance</div>
+            <div class="page-subtitle">
+              Record student attendance for sessions
+            </div>
+          </div>
+          <div class="page-content">
+            <div
+              style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px"
+            >
+              <!-- Single mark -->
+              <div class="section">
+                <div class="section-header">
+                  <span class="section-title">Single Mark</span>
+                </div>
+                <div
+                  class="section-body"
+                  style="display: flex; flex-direction: column; gap: 12px"
+                >
+                  <div class="field">
+                    <label class="field-label">Student ObjectId</label>
+                    <input
+                      id="mark-student-id"
+                      placeholder="paste student ObjectId..."
+                    />
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Session ObjectId</label>
+                    <input
+                      id="mark-session-id"
+                      placeholder="paste session ObjectId..."
+                    />
+                  </div>
+                  <div class="field">
+                    <label class="field-label"
+                      >Status
+                      <span class="text-muted"
+                        >(empty = auto-detect LATE)</span
+                      ></label
+                    >
+                    <select id="mark-status">
+                      <option value="">AUTO-DETECT</option>
+                      <option value="PRESENT">PRESENT</option>
+                      <option value="ABSENT">ABSENT</option>
+                      <option value="LATE">LATE</option>
+                    </select>
+                  </div>
+                  <button id="btn-mark" class="btn btn-primary">
+                    ▶ Mark Attendance
+                  </button>
+                </div>
+              </div>
+
+              <!-- Bulk mark -->
+              <div class="section">
+                <div class="section-header">
+                  <span class="section-title">Bulk Mark</span>
+                </div>
+                <div
+                  class="section-body"
+                  style="display: flex; flex-direction: column; gap: 12px"
+                >
+                  <div class="field">
+                    <label class="field-label">Session ObjectId</label>
+                    <input
+                      id="bulk-session-id"
+                      placeholder="paste session ObjectId..."
+                    />
+                  </div>
+                  <div class="field">
+                    <label class="field-label"
+                      >Records — one per line:
+                      <code>studentId,STATUS</code></label
+                    >
+                    <textarea
+                      id="bulk-records"
+                      placeholder="6a025...,PRESENT&#10;6a026...,LATE&#10;6a027...,ABSENT"
+                    ></textarea>
+                  </div>
+                  <button id="btn-bulk" class="btn btn-primary">
+                    ▶ Bulk Mark
+                  </button>
+                  <div
+                    id="bulk-result"
+                    class="hidden"
+                    style="margin-top: 4px"
+                  ></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Summary -->
+            <div class="section" style="margin-top: 16px">
+              <div class="section-header">
+                <span class="section-title">Attendance Summary</span>
+              </div>
+              <div class="section-body">
+                <div class="flex gap-8 items-center">
+                  <div class="field" style="flex: 1; max-width: 360px">
+                    <label class="field-label">Session ObjectId</label>
+                    <input
+                      id="summary-session-id"
+                      placeholder="paste session ObjectId..."
+                    />
+                  </div>
+                  <button
+                    id="btn-fetch-summary"
+                    class="btn btn-primary"
+                    style="align-self: flex-end"
+                  >
+                    Fetch Summary
+                  </button>
+                </div>
+              </div>
+              <div id="summary-result"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════ STATS ════ -->
+        <div id="page-stats" class="page">
+          <div class="page-header">
+            <div class="page-title">Student Statistics</div>
+            <div class="page-subtitle">Attendance rates and breakdowns</div>
+          </div>
+          <div class="page-content">
+            <div class="section">
+              <div class="section-header">
+                <span class="section-title">Lookup Student Stats</span>
+              </div>
+              <div class="section-body">
+                <div class="flex gap-8 items-center">
+                  <div class="field" style="flex: 1; max-width: 360px">
+                    <label class="field-label">Student ObjectId</label>
+                    <input
+                      id="stats-student-id"
+                      placeholder="paste student ObjectId..."
+                    />
+                  </div>
+                  <button
+                    id="btn-fetch-stats"
+                    class="btn btn-primary"
+                    style="align-self: flex-end"
+                  >
+                    Get Stats
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div id="stats-result"></div>
+          </div>
+        </div>
+
+        <!-- ════ MY ATTENDANCE (student) ════ -->
+        <div id="page-my-attendance" class="page">
+          <div class="page-header">
+            <div class="page-title">My Attendance</div>
+            <div class="page-subtitle">Your personal attendance records</div>
+          </div>
+          <div class="page-content">
+            <div class="section">
+              <div class="section-header">
+                <span class="section-title">Attendance Records</span>
+                <button
+                  id="btn-load-my-attendance"
+                  class="btn btn-sm btn-primary"
+                >
+                  ↻ Load
+                </button>
+              </div>
+              <div class="section-body" style="padding: 0">
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Course</th>
+                        <th>Code</th>
+                        <th>Location</th>
+                        <th>Status</th>
+                        <th>Date</th>
+                      </tr>
+                    </thead>
+                    <tbody id="my-attendance-tbody">
+                      <tr>
+                        <td colspan="6">
+                          <div class="empty-state">
+                            Click Load to fetch your records
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════ LIVE FEED ════ -->
+        <div id="page-live" class="page">
+          <div class="page-header">
+            <div class="page-title">Live Feed</div>
+            <div class="page-subtitle">
+              Real-time attendance events via WebSocket
+            </div>
+          </div>
+          <div class="page-content">
+            <div class="section">
+              <div class="section-header">
+                <span class="section-title">WebSocket Subscription</span>
+                <div class="ws-badge">
+                  <div id="ws-dot" class="ws-dot"></div>
+                  <span id="ws-label">Disconnected</span>
+                </div>
+              </div>
+              <div class="section-body">
+                <div
+                  class="flex gap-8 items-center"
+                  style="margin-bottom: 14px"
+                >
+                  <div class="field" style="flex: 1; max-width: 360px">
+                    <label class="field-label"
+                      >Session ObjectId
+                      <span class="text-muted"
+                        >(leave empty for all sessions)</span
+                      ></label
+                    >
+                    <input
+                      id="sub-session-id"
+                      placeholder="paste session ObjectId or leave empty..."
+                    />
+                  </div>
+                  <button
+                    id="sub-btn"
+                    class="btn btn-success"
+                    style="align-self: flex-end"
+                  >
+                    ▶ Start
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-header">
+                <span class="section-title">Event Stream</span>
+              </div>
+              <div id="feed" class="feed">
+                <div class="feed-empty">
+                  Start a subscription to see live events here
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════ ENROLLMENT ════ -->
+        <div id="page-enrollment" class="page">
+          <div class="page-header">
+            <div class="page-title">Enrollment</div>
+            <div class="page-subtitle">Manage student-course relationships</div>
+          </div>
+          <div class="page-content">
+            <div class="section">
+              <div class="section-header">
+                <span class="section-title">Enroll / Unenroll</span>
+              </div>
+              <div class="section-body">
+                <div class="form-grid">
+                  <div class="field">
+                    <label class="field-label">Student ObjectId</label>
+                    <input
+                      id="enroll-student-id"
+                      placeholder="paste student ObjectId..."
+                    />
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Course ObjectId</label>
+                    <input
+                      id="enroll-course-id"
+                      placeholder="paste course ObjectId..."
+                    />
+                  </div>
+                </div>
+                <div class="btn-group" style="margin-top: 12px">
+                  <button id="btn-enroll" class="btn btn-success">
+                    ✓ Enroll
+                  </button>
+                  <button id="btn-unenroll" class="btn btn-danger">
+                    ✗ Unenroll
+                  </button>
+                  <button id="btn-enrollments-student" class="btn">
+                    By Student
+                  </button>
+                  <button id="btn-enrollments-course" class="btn">
+                    By Course
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div id="enroll-result" style="margin-top: 8px"></div>
+          </div>
+        </div>
+
+        <!-- ════ EXPORT ════ -->
+        <div id="page-export" class="page">
+          <div class="page-header">
+            <div class="page-title">Export</div>
+            <div class="page-subtitle">
+              Download attendance data as Excel (.xlsx)
+            </div>
+          </div>
+          <div class="page-content">
+            <div
+              style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px"
+            >
+              <div class="section">
+                <div class="section-header">
+                  <span class="section-title">Student Stats Report</span>
+                </div>
+                <div class="section-body">
+                  <p class="text-sm text-muted" style="margin-bottom: 14px">
+                    Downloads a spreadsheet with attendance rates for all
+                    students — present, absent, late counts and overall
+                    percentage.
+                  </p>
+                  <button id="btn-export-stats" class="btn btn-amber">
+                    ⬇ Download Student Stats
+                  </button>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section-header">
+                  <span class="section-title">Session Attendance Sheet</span>
+                </div>
+                <div class="section-body">
+                  <p class="text-sm text-muted" style="margin-bottom: 14px">
+                    Downloads a color-coded attendance sheet for a specific
+                    session — green for PRESENT, red for ABSENT, yellow for
+                    LATE.
+                  </p>
+                  <div class="field" style="margin-bottom: 12px">
+                    <label class="field-label">Session ObjectId</label>
+                    <input
+                      id="export-session-id"
+                      placeholder="paste session ObjectId..."
+                    />
+                  </div>
+                  <button id="btn-export-session" class="btn btn-amber">
+                    ⬇ Download Session Sheet
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
 
-    <!-- ── Export — TEACHER only ── -->
-    <div class="card teacher-only">
-      <div class="card-header">
-        <span class="tag tag-export">Export</span>
-        <span class="card-title">Excel Export</span>
-      </div>
-
-      <div style="font-size:0.75rem; color:var(--muted);">Download attendance data as .xlsx</div>
-
-      <div>
-        <button id="btn-export-stats" style="border-color:var(--yellow); color:var(--yellow);">⬇ All Student Stats</button>
-      </div>
-
-      <div class="field">
-        <label>Session ID for session export</label>
-        <input id="export-sessionId" placeholder="paste session ObjectId..." />
-      </div>
-      <div>
-        <button id="btn-export-session" style="border-color:var(--yellow); color:var(--yellow);">⬇ Session Attendance</button>
-      </div>
-    </div>
-
-    <!-- ── Subscriptions ── -->
-    <div class="card full-width">
-      <div class="card-header">
-        <span class="tag tag-sub">Subscription</span>
-        <span class="card-title">Real-time Feed</span>
-        <div class="ws-indicator">
-          <div id="ws-dot" class="ws-dot"></div>
-          <span id="ws-label">disconnected</span>
-        </div>
-      </div>
-
-      <div class="sub-controls">
-        <div class="field">
-          <label>Session ID (leave empty for all sessions)</label>
-          <input id="sub-sessionId" placeholder="paste session ObjectId or leave empty..." />
-        </div>
-        <button id="sub-btn" class="btn-primary">▶ Start Subscription</button>
-      </div>
-
-      <div id="feed" class="feed">
-        <div class="feed-empty">Waiting for events...</div>
-      </div>
-    </div>
-
-  </div>
-
-  <script type="module" src="js/app.js"></script>
-</body>
+    <script type="module" src="js/app.js"></script>
+  </body>
 </html>

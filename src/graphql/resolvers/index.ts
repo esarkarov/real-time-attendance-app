@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { withFilter } from "graphql-subscriptions";
 import mongoose from "mongoose";
+import { AttendanceLog } from "../../models/AttendanceLog";
 import { AttendanceRecord } from "../../models/AttendanceRecord";
 import { Course } from "../../models/Course";
 import { Enrollment } from "../../models/Enrollment";
@@ -15,125 +16,130 @@ import {
 } from "../../utils/auth";
 import { EVENTS, pubsub } from "../../utils/pubsub";
 
-// ── Validation helpers ────────────────────────────────────────────────────────
-
-function validateEmail(email: string): void {
-  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!re.test(email)) throw new Error(`Invalid email address: "${email}"`);
+function validateEmail(email: string) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    throw new Error(`Invalid email: "${email}"`);
 }
 
-function validateFutureDate(date: Date): void {
+function validateFutureDate(date: Date) {
   if (date <= new Date())
     throw new Error("Session date must be in the future.");
 }
 
-async function validateEnrollment(
-  studentId: string,
-  courseId: string,
-): Promise<void> {
-  const enrollment = await Enrollment.findOne({ studentId, courseId });
-  if (!enrollment)
-    throw new Error(
-      "Student is not enrolled in this course. Enroll them first.",
-    );
+async function validateEnrollment(studentId: string, courseId: string) {
+  const e = await Enrollment.findOne({ studentId, courseId });
+  if (!e) throw new Error("Student is not enrolled in this course.");
 }
 
-// ── Late threshold helper ─────────────────────────────────────────────────────
-
-function resolveAttendanceStatus(
+function resolveStatus(
   session: { date: Date; lateThresholdMinutes: number },
-  providedStatus?: string,
-): "PRESENT" | "ABSENT" | "LATE" {
-  // If teacher explicitly provides ABSENT, always respect it
-  if (providedStatus === "ABSENT") return "ABSENT";
-
-  const now = new Date();
-  const sessionStart = new Date(session.date);
-  const minutesLate = (now.getTime() - sessionStart.getTime()) / 60000;
-
-  // Auto-detect LATE based on threshold
-  if (minutesLate > session.lateThresholdMinutes) return "LATE";
-
-  return "PRESENT";
+  provided?: string,
+) {
+  if (provided === "ABSENT") return "ABSENT";
+  const late = (Date.now() - new Date(session.date).getTime()) / 60000;
+  return late > session.lateThresholdMinutes ? "LATE" : "PRESENT";
 }
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type PaginationArgs = { limit?: number; offset?: number };
-type StatusType = "PRESENT" | "ABSENT" | "LATE";
-type Context = AuthContext;
-
-// ── Resolvers ─────────────────────────────────────────────────────────────────
+type PA = { limit?: number; offset?: number };
+type ST = "PRESENT" | "ABSENT" | "LATE";
+type CTX = AuthContext;
 
 export const resolvers = {
-  // ── Field resolvers ────────────────────────────────────────────────────────
-
   Session: {
-    course: async (parent: { courseId: mongoose.Types.ObjectId }) =>
-      Course.findById(parent.courseId),
+    course: async (p: { courseId: mongoose.Types.ObjectId }) =>
+      Course.findById(p.courseId).exec(),
   },
-
   AttendanceRecord: {
-    student: async (parent: { studentId: mongoose.Types.ObjectId }) =>
-      Student.findById(parent.studentId),
-    session: async (parent: { sessionId: mongoose.Types.ObjectId }) =>
-      Session.findById(parent.sessionId),
+    student: async (p: { studentId: mongoose.Types.ObjectId }) =>
+      Student.findById(p.studentId).exec(),
+    session: async (p: { sessionId: mongoose.Types.ObjectId }) =>
+      Session.findById(p.sessionId).exec(),
   },
-
   AttendanceSummary: {
-    session: async (parent: { sessionId: string }) =>
-      Session.findById(parent.sessionId),
+    session: async (p: { sessionId: string }) =>
+      Session.findById(p.sessionId).exec(),
   },
-
+  AttendanceLog: {
+    changedBy: async (p: { changedBy: mongoose.Types.ObjectId }) =>
+      User.findById(p.changedBy).exec(),
+  },
   Enrollment: {
-    student: async (parent: { studentId: mongoose.Types.ObjectId }) =>
-      Student.findById(parent.studentId),
-    course: async (parent: { courseId: mongoose.Types.ObjectId }) =>
-      Course.findById(parent.courseId),
+    student: async (p: { studentId: mongoose.Types.ObjectId }) =>
+      Student.findById(p.studentId).exec(),
+    course: async (p: { courseId: mongoose.Types.ObjectId }) =>
+      Course.findById(p.courseId).exec(),
   },
-
   StudentStats: {
-    student: async (parent: { studentId: string }) =>
-      Student.findById(parent.studentId),
+    student: async (p: { studentId: string }) =>
+      Student.findById(p.studentId).exec(),
   },
-
-  // ── Queries ────────────────────────────────────────────────────────────────
 
   Query: {
-    me: async (_: unknown, __: unknown, context: Context) => {
-      const { userId } = requireAuth(context);
-      return User.findById(userId);
+    me: async (_: unknown, __: unknown, ctx: CTX) => {
+      const { userId } = requireAuth(ctx);
+      return User.findById(userId).exec();
     },
 
-    students: async (
-      _: unknown,
-      { limit = 50, offset = 0 }: PaginationArgs,
-      context: Context,
-    ) => {
-      requireTeacher(context);
-      return Student.find().sort({ createdAt: -1 }).skip(offset).limit(limit);
+    dashboardStats: async (_: unknown, __: unknown, ctx: CTX) => {
+      requireAuth(ctx);
+      const [
+        totalStudents,
+        totalCourses,
+        totalSessions,
+        ongoingSessions,
+        totalAttendanceRecords,
+        allRecords,
+      ] = await Promise.all([
+        Student.countDocuments(),
+        Course.countDocuments(),
+        Session.countDocuments(),
+        Session.countDocuments({ status: "ONGOING" }),
+        AttendanceRecord.countDocuments(),
+        AttendanceRecord.find({}, { status: 1 }).exec(),
+      ]);
+      const present = allRecords.filter((r) => r.status === "PRESENT").length;
+      const late = allRecords.filter((r) => r.status === "LATE").length;
+      const overallAttendanceRate =
+        totalAttendanceRecords > 0
+          ? Math.round(((present + late) / totalAttendanceRecords) * 10000) /
+            100
+          : 0;
+      return {
+        totalStudents,
+        totalCourses,
+        totalSessions,
+        ongoingSessions,
+        totalAttendanceRecords,
+        overallAttendanceRate,
+      };
     },
 
-    student: async (_: unknown, { id }: { id: string }, context: Context) => {
-      requireTeacher(context);
-      return Student.findById(id);
+    students: async (_: unknown, { limit = 50, offset = 0 }: PA, ctx: CTX) => {
+      requireTeacher(ctx);
+      return Student.find()
+        .sort({ createdAt: -1 })
+        .skip(offset)
+        .limit(limit)
+        .exec();
+    },
+    student: async (_: unknown, { id }: { id: string }, ctx: CTX) => {
+      requireTeacher(ctx);
+      return Student.findById(id).exec();
     },
 
-    courses: async (
-      _: unknown,
-      { limit = 50, offset = 0 }: PaginationArgs,
-      context: Context,
-    ) => {
-      requireAuth(context);
-      return Course.find().sort({ createdAt: -1 }).skip(offset).limit(limit);
+    courses: async (_: unknown, { limit = 50, offset = 0 }: PA, ctx: CTX) => {
+      requireAuth(ctx);
+      return Course.find()
+        .sort({ createdAt: -1 })
+        .skip(offset)
+        .limit(limit)
+        .exec();
+    },
+    course: async (_: unknown, { id }: { id: string }, ctx: CTX) => {
+      requireAuth(ctx);
+      return Course.findById(id).exec();
     },
 
-    course: async (_: unknown, { id }: { id: string }, context: Context) => {
-      requireAuth(context);
-      return Course.findById(id);
-    },
-
-    // Now supports filtering by status e.g. sessions(status: ONGOING)
     sessions: async (
       _: unknown,
       {
@@ -141,36 +147,38 @@ export const resolvers = {
         status,
         limit = 50,
         offset = 0,
-      }: { courseId?: string; status?: string } & PaginationArgs,
-      context: Context,
+      }: { courseId?: string; status?: string } & PA,
+      ctx: CTX,
     ) => {
-      requireAuth(context);
-      const filter: Record<string, unknown> = {};
-      if (courseId) filter.courseId = courseId;
-      if (status) filter.status = status;
-      return Session.find(filter).sort({ date: -1 }).skip(offset).limit(limit);
+      requireAuth(ctx);
+      const f: Record<string, unknown> = {};
+      if (courseId) f.courseId = courseId;
+      if (status) f.status = status;
+      return Session.find(f)
+        .sort({ date: -1 })
+        .skip(offset)
+        .limit(limit)
+        .exec();
     },
-
-    session: async (_: unknown, { id }: { id: string }, context: Context) => {
-      requireAuth(context);
-      return Session.findById(id);
+    session: async (_: unknown, { id }: { id: string }, ctx: CTX) => {
+      requireAuth(ctx);
+      return Session.findById(id).exec();
     },
 
     attendanceBySession: async (
       _: unknown,
-      {
-        sessionId,
-        limit = 100,
-        offset = 0,
-      }: { sessionId: string } & PaginationArgs,
-      context: Context,
+      { sessionId, limit = 100, offset = 0 }: { sessionId: string } & PA,
+      ctx: CTX,
     ) => {
-      requireTeacher(context);
-      const records = await AttendanceRecord.find({ sessionId })
-        .sort({ markedAt: -1 })
-        .skip(offset)
-        .limit(limit);
-      const all = await AttendanceRecord.find({ sessionId });
+      requireTeacher(ctx);
+      const [records, all] = await Promise.all([
+        AttendanceRecord.find({ sessionId })
+          .sort({ markedAt: -1 })
+          .skip(offset)
+          .limit(limit)
+          .exec(),
+        AttendanceRecord.find({ sessionId }).exec(),
+      ]);
       return {
         sessionId,
         totalPresent: all.filter((r) => r.status === "PRESENT").length,
@@ -182,111 +190,105 @@ export const resolvers = {
 
     attendanceByStudent: async (
       _: unknown,
-      {
-        studentId,
-        limit = 50,
-        offset = 0,
-      }: { studentId: string } & PaginationArgs,
-      context: Context,
+      { studentId, limit = 50, offset = 0 }: { studentId: string } & PA,
+      ctx: CTX,
     ) => {
-      requireTeacher(context);
+      requireTeacher(ctx);
       return AttendanceRecord.find({ studentId })
         .sort({ markedAt: -1 })
         .skip(offset)
-        .limit(limit);
+        .limit(limit)
+        .exec();
     },
 
     myAttendance: async (
       _: unknown,
-      { limit = 50, offset = 0 }: PaginationArgs,
-      context: Context,
+      { limit = 50, offset = 0 }: PA,
+      ctx: CTX,
     ) => {
-      const user = requireAuth(context);
-      if (user.role !== "STUDENT")
-        throw new Error("Only students can use myAttendance.");
-      if (!user.studentId)
-        throw new Error("No student profile linked to your account.");
+      const user = requireAuth(ctx);
+      if (user.role !== "STUDENT") throw new Error("Students only.");
+      if (!user.studentId) throw new Error("No student profile linked.");
       return AttendanceRecord.find({ studentId: user.studentId })
         .sort({ markedAt: -1 })
         .skip(offset)
-        .limit(limit);
+        .limit(limit)
+        .exec();
+    },
+
+    attendanceLogs: async (
+      _: unknown,
+      { attendanceRecordId }: { attendanceRecordId: string },
+      ctx: CTX,
+    ) => {
+      requireTeacher(ctx);
+      return AttendanceLog.find({ attendanceRecordId })
+        .sort({ changedAt: -1 })
+        .exec();
     },
 
     studentStats: async (
       _: unknown,
       { studentId }: { studentId: string },
-      context: Context,
+      ctx: CTX,
     ) => {
-      const user = requireAuth(context);
-      if (user.role === "STUDENT" && user.studentId !== studentId) {
-        throw new Error("Students can only view their own stats.");
-      }
-      const records = await AttendanceRecord.find({ studentId });
+      const user = requireAuth(ctx);
+      if (user.role === "STUDENT" && user.studentId !== studentId)
+        throw new Error("Students can only view own stats.");
+      const records = await AttendanceRecord.find({ studentId }).exec();
       const present = records.filter((r) => r.status === "PRESENT").length;
       const absent = records.filter((r) => r.status === "ABSENT").length;
       const late = records.filter((r) => r.status === "LATE").length;
       const total = records.length;
-      const attendanceRate =
-        total > 0 ? Math.round(((present + late) / total) * 10000) / 100 : 0;
       return {
         studentId,
         totalSessions: total,
         present,
         absent,
         late,
-        attendanceRate,
+        attendanceRate:
+          total > 0 ? Math.round(((present + late) / total) * 10000) / 100 : 0,
       };
     },
 
     enrollmentsByStudent: async (
       _: unknown,
       { studentId }: { studentId: string },
-      context: Context,
+      ctx: CTX,
     ) => {
-      requireTeacher(context);
-      return Enrollment.find({ studentId });
+      requireTeacher(ctx);
+      return Enrollment.find({ studentId }).exec();
     },
-
     enrollmentsByCourse: async (
       _: unknown,
       { courseId }: { courseId: string },
-      context: Context,
+      ctx: CTX,
     ) => {
-      requireTeacher(context);
-      return Enrollment.find({ courseId });
+      requireTeacher(ctx);
+      return Enrollment.find({ courseId }).exec();
     },
   },
 
-  // ── Mutations ──────────────────────────────────────────────────────────────
-
   Mutation: {
-    // ── Auth ───────────────────────────────────────────────────────────────
+    // ── Auth ─────────────────────────────────────────────────────────────────
+    // Only teachers register here. Students are created by teachers via createStudent.
 
     register: async (
       _: unknown,
-      args: {
-        name: string;
-        email: string;
-        password: string;
-        role: "TEACHER" | "STUDENT";
-        studentId?: string;
-      },
+      args: { name: string; email: string; password: string },
     ) => {
       validateEmail(args.email);
-      const existing = await User.findOne({ email: args.email });
-      if (existing) throw new Error("Email already registered.");
-      if (args.role === "STUDENT" && !args.studentId) {
-        throw new Error("studentId is required when registering as a STUDENT.");
-      }
-      const hashed = await bcrypt.hash(args.password, 12);
-      const user = new User({
+      if (await User.findOne({ email: args.email }))
+        throw new Error("Email already registered.");
+      if (args.password.length < 6)
+        throw new Error("Password must be at least 6 characters.");
+      const user = await new User({
         name: args.name,
         email: args.email,
-        password: hashed,
-        role: args.role,
-        studentId: args.studentId ?? null,
-      });
-      await user.save();
+        password: await bcrypt.hash(args.password, 12),
+        role: "TEACHER",
+        studentId: null,
+      }).save();
       return { token: signToken(user), user };
     },
 
@@ -295,54 +297,136 @@ export const resolvers = {
       { email, password }: { email: string; password: string },
     ) => {
       const user = await User.findOne({ email });
-      if (!user) throw new Error("Invalid email or password.");
-      const valid = await bcrypt.compare(password, user.password);
-      if (!valid) throw new Error("Invalid email or password.");
+      if (!user || !(await bcrypt.compare(password, user.password)))
+        throw new Error("Invalid email or password.");
       return { token: signToken(user), user };
     },
 
-    // ── Students ───────────────────────────────────────────────────────────
+    changePassword: async (
+      _: unknown,
+      {
+        oldPassword,
+        newPassword,
+      }: { oldPassword: string; newPassword: string },
+      ctx: CTX,
+    ) => {
+      const { userId } = requireAuth(ctx);
+      const user = await User.findById(userId);
+      if (!user) throw new Error("User not found.");
+      if (!(await bcrypt.compare(oldPassword, user.password)))
+        throw new Error("Old password is incorrect.");
+      if (newPassword.length < 6)
+        throw new Error("New password must be at least 6 characters.");
+      user.password = await bcrypt.hash(newPassword, 12);
+      await user.save();
+      return true;
+    },
+
+    // ── Students ──────────────────────────────────────────────────────────────
+    // Teacher creates student record AND their login account in one step.
 
     createStudent: async (
       _: unknown,
-      args: { name: string; email: string; studentId: string },
-      context: Context,
+      args: {
+        name: string;
+        email: string;
+        studentId: string;
+        password: string;
+      },
+      ctx: CTX,
     ) => {
-      requireTeacher(context);
+      requireTeacher(ctx);
       validateEmail(args.email);
-      return new Student(args).save();
+      if (!args.password || args.password.length < 6)
+        throw new Error("Password must be at least 6 characters.");
+
+      // Check for duplicates
+      if (await Student.findOne({ email: args.email }))
+        throw new Error("A student with this email already exists.");
+      if (await Student.findOne({ studentId: args.studentId }))
+        throw new Error("A student with this ID already exists.");
+
+      // Create student record
+      const student = await new Student({
+        name: args.name,
+        email: args.email,
+        studentId: args.studentId,
+      }).save();
+
+      // Create their login account
+      if (!(await User.findOne({ email: args.email }))) {
+        await new User({
+          name: args.name,
+          email: args.email,
+          password: await bcrypt.hash(args.password, 12),
+          role: "STUDENT",
+          studentId: student._id,
+        }).save();
+      }
+
+      return student;
     },
 
-    deleteStudent: async (
+    updateStudent: async (
       _: unknown,
-      { id }: { id: string },
-      context: Context,
+      {
+        id,
+        ...updates
+      }: { id: string; name?: string; email?: string; studentId?: string },
+      ctx: CTX,
     ) => {
-      requireTeacher(context);
+      requireTeacher(ctx);
+      if (updates.email) validateEmail(updates.email);
+      const student = await Student.findByIdAndUpdate(
+        id,
+        { $set: updates },
+        { new: true, runValidators: true },
+      );
+      if (!student) throw new Error("Student not found.");
+      return student;
+    },
+
+    deleteStudent: async (_: unknown, { id }: { id: string }, ctx: CTX) => {
+      requireTeacher(ctx);
+      const student = await Student.findById(id);
+      if (student) {
+        // Also delete their user account
+        await User.findOneAndDelete({ email: student.email });
+      }
       return !!(await Student.findByIdAndDelete(id));
     },
-
-    // ── Courses ────────────────────────────────────────────────────────────
 
     createCourse: async (
       _: unknown,
       args: { name: string; code: string; instructor: string },
-      context: Context,
+      ctx: CTX,
     ) => {
-      requireTeacher(context);
+      requireTeacher(ctx);
       return new Course(args).save();
     },
 
-    deleteCourse: async (
+    updateCourse: async (
       _: unknown,
-      { id }: { id: string },
-      context: Context,
+      {
+        id,
+        ...updates
+      }: { id: string; name?: string; code?: string; instructor?: string },
+      ctx: CTX,
     ) => {
-      requireTeacher(context);
-      return !!(await Course.findByIdAndDelete(id));
+      requireTeacher(ctx);
+      const course = await Course.findByIdAndUpdate(
+        id,
+        { $set: updates },
+        { new: true, runValidators: true },
+      );
+      if (!course) throw new Error("Course not found.");
+      return course;
     },
 
-    // ── Sessions ───────────────────────────────────────────────────────────
+    deleteCourse: async (_: unknown, { id }: { id: string }, ctx: CTX) => {
+      requireTeacher(ctx);
+      return !!(await Course.findByIdAndDelete(id));
+    },
 
     createSession: async (
       _: unknown,
@@ -352,125 +436,97 @@ export const resolvers = {
         location: string;
         lateThresholdMinutes?: number;
       },
-      context: Context,
+      ctx: CTX,
     ) => {
-      requireTeacher(context);
+      requireTeacher(ctx);
       const date = new Date(args.date);
       validateFutureDate(date);
       return new Session({
-        courseId: args.courseId,
+        ...args,
         date,
-        location: args.location,
         lateThresholdMinutes: args.lateThresholdMinutes ?? 15,
         status: "UPCOMING",
       }).save();
     },
 
-    deleteSession: async (
-      _: unknown,
-      { id }: { id: string },
-      context: Context,
-    ) => {
-      requireTeacher(context);
+    deleteSession: async (_: unknown, { id }: { id: string }, ctx: CTX) => {
+      requireTeacher(ctx);
       return !!(await Session.findByIdAndDelete(id));
     },
 
-    // Feature: open session (UPCOMING → ONGOING)
-    openSession: async (
-      _: unknown,
-      { id }: { id: string },
-      context: Context,
-    ) => {
-      requireTeacher(context);
-      const session = await Session.findById(id);
-      if (!session) throw new Error("Session not found.");
-      if (session.status === "CLOSED")
+    openSession: async (_: unknown, { id }: { id: string }, ctx: CTX) => {
+      requireTeacher(ctx);
+      const s = await Session.findById(id);
+      if (!s) throw new Error("Session not found.");
+      if (s.status === "CLOSED")
         throw new Error("Cannot reopen a closed session.");
-      if (session.status === "ONGOING")
-        throw new Error("Session is already open.");
-      session.status = "ONGOING";
-      return session.save();
+      if (s.status === "ONGOING") throw new Error("Session already open.");
+      s.status = "ONGOING";
+      return s.save();
     },
 
-    // Feature: close session (ONGOING → CLOSED)
-    closeSession: async (
-      _: unknown,
-      { id }: { id: string },
-      context: Context,
-    ) => {
-      requireTeacher(context);
-      const session = await Session.findById(id);
-      if (!session) throw new Error("Session not found.");
-      if (session.status === "UPCOMING")
-        throw new Error("Session has not been opened yet.");
-      if (session.status === "CLOSED")
-        throw new Error("Session is already closed.");
-      session.status = "CLOSED";
-      return session.save();
+    closeSession: async (_: unknown, { id }: { id: string }, ctx: CTX) => {
+      requireTeacher(ctx);
+      const s = await Session.findById(id);
+      if (!s) throw new Error("Session not found.");
+      if (s.status === "UPCOMING") throw new Error("Session not opened yet.");
+      if (s.status === "CLOSED") throw new Error("Session already closed.");
+      s.status = "CLOSED";
+      return s.save();
     },
-
-    // ── Attendance ─────────────────────────────────────────────────────────
 
     markAttendance: async (
       _: unknown,
-      args: { studentId: string; sessionId: string; status?: StatusType },
-      context: Context,
+      args: { studentId: string; sessionId: string; status?: ST },
+      ctx: CTX,
     ) => {
-      requireTeacher(context);
-
+      requireTeacher(ctx);
       const session = await Session.findById(args.sessionId);
       if (!session) throw new Error("Session not found.");
-
-      // Session must be ONGOING
-      if (session.status !== "ONGOING") {
-        throw new Error(
-          `Cannot mark attendance. Session is ${session.status}. Open the session first.`,
-        );
-      }
-
+      if (session.status !== "ONGOING")
+        throw new Error(`Session is ${session.status}. Open it first.`);
       await validateEnrollment(args.studentId, session.courseId.toString());
-
-      const existing = await AttendanceRecord.findOne({
-        studentId: args.studentId,
-        sessionId: args.sessionId,
-      });
-      if (existing)
+      if (
+        await AttendanceRecord.findOne({
+          studentId: args.studentId,
+          sessionId: args.sessionId,
+        })
+      )
         throw new Error(
           "Attendance already marked. Use updateAttendance instead.",
         );
-
-      // Auto-detect LATE based on threshold if status not explicitly provided
-      const status = resolveAttendanceStatus(session, args.status);
-
-      const record = new AttendanceRecord({
+      const status = resolveStatus(session, args.status) as ST;
+      const record = await new AttendanceRecord({
         studentId: args.studentId,
         sessionId: args.sessionId,
         status,
         markedAt: new Date(),
-      });
-      await record.save();
-
+      }).save();
       pubsub.publish(EVENTS.ATTENDANCE_MARKED, {
         attendanceMarked: record,
         sessionId: args.sessionId.toString(),
       });
       pubsub.publish(EVENTS.ATTENDANCE_UPDATED, { attendanceUpdated: record });
-
       return record;
     },
 
     updateAttendance: async (
       _: unknown,
-      { id, status }: { id: string; status: StatusType },
-      context: Context,
+      { id, status }: { id: string; status: ST },
+      ctx: CTX,
     ) => {
-      requireTeacher(context);
-      const record = await AttendanceRecord.findByIdAndUpdate(
-        id,
-        { status },
-        { new: true },
-      );
+      const { userId } = requireTeacher(ctx);
+      const record = await AttendanceRecord.findById(id);
       if (!record) throw new Error("Attendance record not found.");
+      await new AttendanceLog({
+        attendanceRecordId: record._id,
+        changedBy: userId,
+        previousStatus: record.status,
+        newStatus: status,
+        changedAt: new Date(),
+      }).save();
+      record.status = status;
+      await record.save();
       pubsub.publish(EVENTS.ATTENDANCE_UPDATED, { attendanceUpdated: record });
       return record;
     },
@@ -480,49 +536,31 @@ export const resolvers = {
       {
         sessionId,
         records,
-      }: {
-        sessionId: string;
-        records: { studentId: string; status: StatusType }[];
-      },
-      context: Context,
+      }: { sessionId: string; records: { studentId: string; status: ST }[] },
+      ctx: CTX,
     ) => {
-      requireTeacher(context);
+      requireTeacher(ctx);
       const session = await Session.findById(sessionId);
       if (!session) throw new Error("Session not found.");
-
-      // Session must be ONGOING
-      if (session.status !== "ONGOING") {
-        throw new Error(
-          `Cannot mark attendance. Session is ${session.status}. Open the session first.`,
-        );
-      }
-
+      if (session.status !== "ONGOING")
+        throw new Error(`Session is ${session.status}. Open it first.`);
       const successful: (typeof AttendanceRecord.prototype)[] = [];
       const failed: { studentId: string; reason: string }[] = [];
-
       await Promise.all(
         records.map(async ({ studentId, status }) => {
           try {
             await validateEnrollment(studentId, session.courseId.toString());
-            const existing = await AttendanceRecord.findOne({
-              studentId,
-              sessionId,
-            });
-            if (existing) {
-              failed.push({ studentId, reason: "Attendance already marked." });
+            if (await AttendanceRecord.findOne({ studentId, sessionId })) {
+              failed.push({ studentId, reason: "Already marked." });
               return;
             }
-
-            // Auto-detect LATE
-            const resolvedStatus = resolveAttendanceStatus(session, status);
-            const record = new AttendanceRecord({
+            const resolved = resolveStatus(session, status) as ST;
+            const record = await new AttendanceRecord({
               studentId,
               sessionId,
-              status: resolvedStatus,
+              status: resolved,
               markedAt: new Date(),
-            });
-            await record.save();
-
+            }).save();
             pubsub.publish(EVENTS.ATTENDANCE_MARKED, {
               attendanceMarked: record,
               sessionId: sessionId.toString(),
@@ -531,7 +569,7 @@ export const resolvers = {
               attendanceUpdated: record,
             });
             successful.push(record);
-          } catch (err: unknown) {
+          } catch (err) {
             failed.push({
               studentId,
               reason: err instanceof Error ? err.message : "Unknown error",
@@ -542,20 +580,18 @@ export const resolvers = {
       return { successful, failed };
     },
 
-    // ── Enrollment ─────────────────────────────────────────────────────────
-
     enrollStudent: async (
       _: unknown,
       { studentId, courseId }: { studentId: string; courseId: string },
-      context: Context,
+      ctx: CTX,
     ) => {
-      requireTeacher(context);
+      requireTeacher(ctx);
       if (!(await Student.findById(studentId)))
         throw new Error("Student not found.");
       if (!(await Course.findById(courseId)))
         throw new Error("Course not found.");
       if (await Enrollment.findOne({ studentId, courseId }))
-        throw new Error("Student is already enrolled.");
+        throw new Error("Already enrolled.");
       return new Enrollment({
         studentId,
         courseId,
@@ -566,29 +602,25 @@ export const resolvers = {
     unenrollStudent: async (
       _: unknown,
       { studentId, courseId }: { studentId: string; courseId: string },
-      context: Context,
+      ctx: CTX,
     ) => {
-      requireTeacher(context);
+      requireTeacher(ctx);
       return !!(await Enrollment.findOneAndDelete({ studentId, courseId }));
     },
   },
-
-  // ── Subscriptions ──────────────────────────────────────────────────────────
 
   Subscription: {
     attendanceMarked: {
       subscribe: withFilter(
         () => pubsub.asyncIterator(EVENTS.ATTENDANCE_MARKED),
-        (payload: { sessionId: string }, variables: { sessionId: string }) =>
-          payload.sessionId.toString() === variables.sessionId.toString(),
+        (p: { sessionId: string }, v: { sessionId: string }) =>
+          p.sessionId.toString() === v.sessionId.toString(),
       ),
-      resolve: (payload: { attendanceMarked: unknown }) =>
-        payload.attendanceMarked,
+      resolve: (p: { attendanceMarked: unknown }) => p.attendanceMarked,
     },
     attendanceUpdated: {
       subscribe: () => pubsub.asyncIterator(EVENTS.ATTENDANCE_UPDATED),
-      resolve: (payload: { attendanceUpdated: unknown }) =>
-        payload.attendanceUpdated,
+      resolve: (p: { attendanceUpdated: unknown }) => p.attendanceUpdated,
     },
   },
 };

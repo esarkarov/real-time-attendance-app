@@ -1,10 +1,13 @@
+import bcrypt from "bcryptjs";
 import "dotenv/config";
 import mongoose from "mongoose";
+import { AttendanceLog } from "../src/models/AttendanceLog";
 import { AttendanceRecord } from "../src/models/AttendanceRecord";
 import { Course } from "../src/models/Course";
 import { Enrollment } from "../src/models/Enrollment";
 import { Session } from "../src/models/Session";
 import { Student } from "../src/models/Student";
+import { User } from "../src/models/User";
 
 async function seed() {
   const uri = process.env.MONGODB_URI;
@@ -13,18 +16,19 @@ async function seed() {
   await mongoose.connect(uri);
   console.log("✅ Connected to MongoDB");
 
-  // Clear ALL collections
+  // ── Clear ALL collections ─────────────────────────────────────────────────
   await Promise.all([
     Student.deleteMany({}),
     Course.deleteMany({}),
     Session.deleteMany({}),
     AttendanceRecord.deleteMany({}),
+    AttendanceLog.deleteMany({}),
     Enrollment.deleteMany({}),
+    User.deleteMany({}),
   ]);
   console.log("🗑️  Cleared existing data");
 
   // ── Students ──────────────────────────────────────────────────────────────
-
   const students = await Student.insertMany([
     { name: "Elvin Sarkarov", email: "elvin@ufaz.az", studentId: "DSAI001" },
     { name: "Elbay Mammadov", email: "elbay@ufaz.az", studentId: "DSAI002" },
@@ -38,7 +42,6 @@ async function seed() {
   console.log(`👤 Created ${students.length} students`);
 
   // ── Courses ───────────────────────────────────────────────────────────────
-
   const courses = await Course.insertMany([
     {
       name: "Distributed Programming",
@@ -51,135 +54,152 @@ async function seed() {
   console.log(`📚 Created ${courses.length} courses`);
 
   // ── Enrollments ───────────────────────────────────────────────────────────
-
   const enrollmentData = [
-    // Distributed Programming — all 8 students
-    ...students.map((s) => ({ studentId: s._id, courseId: courses[0]._id })),
-    // Machine Learning — first 5
+    ...students.map((s) => ({ studentId: s._id, courseId: courses[0]._id })), // PROG4 — all 8
     ...students
       .slice(0, 5)
-      .map((s) => ({ studentId: s._id, courseId: courses[1]._id })),
-    // Data Mining — first 4
+      .map((s) => ({ studentId: s._id, courseId: courses[1]._id })), // ML301 — first 5
     ...students
       .slice(0, 4)
-      .map((s) => ({ studentId: s._id, courseId: courses[2]._id })),
+      .map((s) => ({ studentId: s._id, courseId: courses[2]._id })), // DM201 — first 4
   ];
-
   await Enrollment.insertMany(
     enrollmentData.map((e) => ({ ...e, enrolledAt: new Date() })),
   );
   console.log(`🎓 Created ${enrollmentData.length} enrollments`);
 
   // ── Sessions ──────────────────────────────────────────────────────────────
-
   const sessions = await Session.insertMany([
-    // Distributed Programming — 3 past sessions
+    // PROG4 — 3 closed past sessions
     {
       courseId: courses[0]._id,
       date: new Date("2026-04-14T09:00:00"),
       location: "Room A101",
+      status: "CLOSED",
+      lateThresholdMinutes: 15,
     },
     {
       courseId: courses[0]._id,
       date: new Date("2026-04-21T09:00:00"),
       location: "Room A101",
+      status: "CLOSED",
+      lateThresholdMinutes: 15,
     },
     {
       courseId: courses[0]._id,
       date: new Date("2026-04-28T09:00:00"),
       location: "Room A101",
+      status: "CLOSED",
+      lateThresholdMinutes: 15,
     },
-    // Machine Learning — 2 past sessions
+    // ML301 — 2 closed past sessions
     {
       courseId: courses[1]._id,
       date: new Date("2026-04-15T11:00:00"),
       location: "Lab B202",
+      status: "CLOSED",
+      lateThresholdMinutes: 10,
     },
     {
       courseId: courses[1]._id,
       date: new Date("2026-04-22T11:00:00"),
       location: "Lab B202",
+      status: "CLOSED",
+      lateThresholdMinutes: 10,
     },
-    // Data Mining — 2 past sessions
+    // DM201 — 2 closed past sessions
     {
       courseId: courses[2]._id,
       date: new Date("2026-04-16T14:00:00"),
       location: "Room C303",
+      status: "CLOSED",
+      lateThresholdMinutes: 20,
     },
     {
       courseId: courses[2]._id,
       date: new Date("2026-04-23T14:00:00"),
       location: "Room C303",
+      status: "CLOSED",
+      lateThresholdMinutes: 20,
+    },
+    // Upcoming sessions for testing
+    {
+      courseId: courses[0]._id,
+      date: new Date("2026-05-20T09:00:00"),
+      location: "Room A101",
+      status: "UPCOMING",
+      lateThresholdMinutes: 15,
+    },
+    {
+      courseId: courses[1]._id,
+      date: new Date("2026-05-21T11:00:00"),
+      location: "Lab B202",
+      status: "UPCOMING",
+      lateThresholdMinutes: 10,
+    },
+    {
+      courseId: courses[2]._id,
+      date: new Date("2026-05-22T14:00:00"),
+      location: "Room C303",
+      status: "UPCOMING",
+      lateThresholdMinutes: 20,
     },
   ]);
   console.log(`📅 Created ${sessions.length} sessions`);
 
   // ── Attendance Records ────────────────────────────────────────────────────
-
-  const prog4s0 = sessions[0]; // PROG4 session 1
-  const prog4s1 = sessions[1]; // PROG4 session 2
-  const prog4s2 = sessions[2]; // PROG4 session 3
-  const ml301s0 = sessions[3]; // ML301 session 1
-  const ml301s1 = sessions[4]; // ML301 session 2
-  const dm201s0 = sessions[5]; // DM201 session 1
-  const dm201s1 = sessions[6]; // DM201 session 2
+  const [s0, s1, s2, s3, s4, s5, s6] = sessions;
 
   const attendanceData = [
-    // ── PROG4 Session 1 (all 8 enrolled)
-    { studentId: students[0]._id, sessionId: prog4s0._id, status: "PRESENT" },
-    { studentId: students[1]._id, sessionId: prog4s0._id, status: "PRESENT" },
-    { studentId: students[2]._id, sessionId: prog4s0._id, status: "LATE" },
-    { studentId: students[3]._id, sessionId: prog4s0._id, status: "ABSENT" },
-    { studentId: students[4]._id, sessionId: prog4s0._id, status: "PRESENT" },
-    { studentId: students[5]._id, sessionId: prog4s0._id, status: "PRESENT" },
-    { studentId: students[6]._id, sessionId: prog4s0._id, status: "LATE" },
-    { studentId: students[7]._id, sessionId: prog4s0._id, status: "PRESENT" },
-
-    // ── PROG4 Session 2
-    { studentId: students[0]._id, sessionId: prog4s1._id, status: "PRESENT" },
-    { studentId: students[1]._id, sessionId: prog4s1._id, status: "ABSENT" },
-    { studentId: students[2]._id, sessionId: prog4s1._id, status: "PRESENT" },
-    { studentId: students[3]._id, sessionId: prog4s1._id, status: "PRESENT" },
-    { studentId: students[4]._id, sessionId: prog4s1._id, status: "LATE" },
-    { studentId: students[5]._id, sessionId: prog4s1._id, status: "PRESENT" },
-    { studentId: students[6]._id, sessionId: prog4s1._id, status: "ABSENT" },
-    { studentId: students[7]._id, sessionId: prog4s1._id, status: "PRESENT" },
-
-    // ── PROG4 Session 3
-    { studentId: students[0]._id, sessionId: prog4s2._id, status: "PRESENT" },
-    { studentId: students[1]._id, sessionId: prog4s2._id, status: "PRESENT" },
-    { studentId: students[2]._id, sessionId: prog4s2._id, status: "PRESENT" },
-    { studentId: students[3]._id, sessionId: prog4s2._id, status: "LATE" },
-    { studentId: students[4]._id, sessionId: prog4s2._id, status: "ABSENT" },
-    { studentId: students[5]._id, sessionId: prog4s2._id, status: "PRESENT" },
-    { studentId: students[6]._id, sessionId: prog4s2._id, status: "PRESENT" },
-    { studentId: students[7]._id, sessionId: prog4s2._id, status: "LATE" },
-
-    // ── ML301 Session 1 (first 5 enrolled)
-    { studentId: students[0]._id, sessionId: ml301s0._id, status: "PRESENT" },
-    { studentId: students[1]._id, sessionId: ml301s0._id, status: "LATE" },
-    { studentId: students[2]._id, sessionId: ml301s0._id, status: "PRESENT" },
-    { studentId: students[3]._id, sessionId: ml301s0._id, status: "ABSENT" },
-    { studentId: students[4]._id, sessionId: ml301s0._id, status: "PRESENT" },
-
-    // ── ML301 Session 2
-    { studentId: students[0]._id, sessionId: ml301s1._id, status: "PRESENT" },
-    { studentId: students[1]._id, sessionId: ml301s1._id, status: "PRESENT" },
-    { studentId: students[2]._id, sessionId: ml301s1._id, status: "ABSENT" },
-    { studentId: students[3]._id, sessionId: ml301s1._id, status: "PRESENT" },
-    { studentId: students[4]._id, sessionId: ml301s1._id, status: "LATE" },
-
-    // ── DM201 Session 1 (first 4 enrolled)
-    { studentId: students[0]._id, sessionId: dm201s0._id, status: "PRESENT" },
-    { studentId: students[1]._id, sessionId: dm201s0._id, status: "PRESENT" },
-    { studentId: students[2]._id, sessionId: dm201s0._id, status: "LATE" },
-    { studentId: students[3]._id, sessionId: dm201s0._id, status: "ABSENT" },
-
-    // ── DM201 Session 2
-    { studentId: students[0]._id, sessionId: dm201s1._id, status: "PRESENT" },
-    { studentId: students[1]._id, sessionId: dm201s1._id, status: "ABSENT" },
-    { studentId: students[2]._id, sessionId: dm201s1._id, status: "PRESENT" },
-    { studentId: students[3]._id, sessionId: dm201s1._id, status: "PRESENT" },
+    // PROG4 Session 1
+    { studentId: students[0]._id, sessionId: s0._id, status: "PRESENT" },
+    { studentId: students[1]._id, sessionId: s0._id, status: "PRESENT" },
+    { studentId: students[2]._id, sessionId: s0._id, status: "LATE" },
+    { studentId: students[3]._id, sessionId: s0._id, status: "ABSENT" },
+    { studentId: students[4]._id, sessionId: s0._id, status: "PRESENT" },
+    { studentId: students[5]._id, sessionId: s0._id, status: "PRESENT" },
+    { studentId: students[6]._id, sessionId: s0._id, status: "LATE" },
+    { studentId: students[7]._id, sessionId: s0._id, status: "PRESENT" },
+    // PROG4 Session 2
+    { studentId: students[0]._id, sessionId: s1._id, status: "PRESENT" },
+    { studentId: students[1]._id, sessionId: s1._id, status: "ABSENT" },
+    { studentId: students[2]._id, sessionId: s1._id, status: "PRESENT" },
+    { studentId: students[3]._id, sessionId: s1._id, status: "PRESENT" },
+    { studentId: students[4]._id, sessionId: s1._id, status: "LATE" },
+    { studentId: students[5]._id, sessionId: s1._id, status: "PRESENT" },
+    { studentId: students[6]._id, sessionId: s1._id, status: "ABSENT" },
+    { studentId: students[7]._id, sessionId: s1._id, status: "PRESENT" },
+    // PROG4 Session 3
+    { studentId: students[0]._id, sessionId: s2._id, status: "PRESENT" },
+    { studentId: students[1]._id, sessionId: s2._id, status: "PRESENT" },
+    { studentId: students[2]._id, sessionId: s2._id, status: "PRESENT" },
+    { studentId: students[3]._id, sessionId: s2._id, status: "LATE" },
+    { studentId: students[4]._id, sessionId: s2._id, status: "ABSENT" },
+    { studentId: students[5]._id, sessionId: s2._id, status: "PRESENT" },
+    { studentId: students[6]._id, sessionId: s2._id, status: "PRESENT" },
+    { studentId: students[7]._id, sessionId: s2._id, status: "LATE" },
+    // ML301 Session 1
+    { studentId: students[0]._id, sessionId: s3._id, status: "PRESENT" },
+    { studentId: students[1]._id, sessionId: s3._id, status: "LATE" },
+    { studentId: students[2]._id, sessionId: s3._id, status: "PRESENT" },
+    { studentId: students[3]._id, sessionId: s3._id, status: "ABSENT" },
+    { studentId: students[4]._id, sessionId: s3._id, status: "PRESENT" },
+    // ML301 Session 2
+    { studentId: students[0]._id, sessionId: s4._id, status: "PRESENT" },
+    { studentId: students[1]._id, sessionId: s4._id, status: "PRESENT" },
+    { studentId: students[2]._id, sessionId: s4._id, status: "ABSENT" },
+    { studentId: students[3]._id, sessionId: s4._id, status: "PRESENT" },
+    { studentId: students[4]._id, sessionId: s4._id, status: "LATE" },
+    // DM201 Session 1
+    { studentId: students[0]._id, sessionId: s5._id, status: "PRESENT" },
+    { studentId: students[1]._id, sessionId: s5._id, status: "PRESENT" },
+    { studentId: students[2]._id, sessionId: s5._id, status: "LATE" },
+    { studentId: students[3]._id, sessionId: s5._id, status: "ABSENT" },
+    // DM201 Session 2
+    { studentId: students[0]._id, sessionId: s6._id, status: "PRESENT" },
+    { studentId: students[1]._id, sessionId: s6._id, status: "ABSENT" },
+    { studentId: students[2]._id, sessionId: s6._id, status: "PRESENT" },
+    { studentId: students[3]._id, sessionId: s6._id, status: "PRESENT" },
   ];
 
   await AttendanceRecord.insertMany(
@@ -187,13 +207,54 @@ async function seed() {
   );
   console.log(`📝 Created ${attendanceData.length} attendance records`);
 
-  // ── Summary ───────────────────────────────────────────────────────────────
+  // ── Users (pre-seeded accounts) ───────────────────────────────────────────
+  const hashedPassword = await bcrypt.hash("password123", 12);
 
-  console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("✅ Seed complete! Quick reference:");
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  await User.insertMany([
+    // Teacher account
+    {
+      name: "Prof. Martin",
+      email: "martin@ufaz.az",
+      password: hashedPassword,
+      role: "TEACHER",
+      studentId: null,
+    },
+    // Student accounts linked to student records
+    {
+      name: students[0].name,
+      email: students[0].email,
+      password: hashedPassword,
+      role: "STUDENT",
+      studentId: students[0]._id,
+    },
+    {
+      name: students[1].name,
+      email: students[1].email,
+      password: hashedPassword,
+      role: "STUDENT",
+      studentId: students[1]._id,
+    },
+    {
+      name: students[2].name,
+      email: students[2].email,
+      password: hashedPassword,
+      role: "STUDENT",
+      studentId: students[2]._id,
+    },
+  ]);
+  console.log("🔐 Created 4 user accounts (1 teacher + 3 students)");
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("✅ Seed complete!");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("\n🔐 Login credentials (password: password123):");
+  console.log("  TEACHER  →  martin@ufaz.az");
+  console.log("  STUDENT  →  elvin@ufaz.az");
+  console.log("  STUDENT  →  elbay@ufaz.az");
+  console.log("  STUDENT  →  roza@ufaz.az");
   console.log("\n📚 Courses:");
-  courses.forEach((c) => console.log(`  ${c.code}  →  ${c._id}`));
+  courses.forEach((c) => console.log(`  ${c.code.padEnd(6)}  →  ${c._id}`));
   console.log("\n👤 Students:");
   students.forEach((s) =>
     console.log(`  ${s.studentId}  ${s.name.padEnd(18)}  →  ${s._id}`),
@@ -202,10 +263,10 @@ async function seed() {
   sessions.forEach((s, i) => {
     const course = courses.find((c) => c._id.equals(s.courseId));
     console.log(
-      `  [${i}] ${course?.code}  ${s.date.toISOString().slice(0, 10)}  ${s.location.padEnd(12)}  →  ${s._id}`,
+      `  [${i}] ${course?.code.padEnd(6)}  ${s.date.toISOString().slice(0, 10)}  ${s.status.padEnd(8)}  ${s.location.padEnd(12)}  →  ${s._id}`,
     );
   });
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
   await mongoose.disconnect();
 }
