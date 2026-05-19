@@ -291,7 +291,6 @@ export const resolvers = {
       }).save();
       return { token: signToken(user), user };
     },
-
     login: async (
       _: unknown,
       { email, password }: { email: string; password: string },

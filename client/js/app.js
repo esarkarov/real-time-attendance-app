@@ -336,7 +336,7 @@ async function handleViewSummary(sessionId) {
 
 async function handleFetchSummary() {
   const sessionId = v("summary-session-id");
-  if (!sessionId) return toast.error("Enter a session ID.");
+  if (!sessionId) return toast.error("Please select a session.");
   setLoading("btn-fetch-summary", true);
   try {
     renderAttendanceSummary(await getAttendanceSummary(sessionId));
@@ -352,7 +352,7 @@ async function handleMarkAttendance() {
   const sessionId = v("mark-session-id");
   const status = v("mark-status");
   if (!studentId || !sessionId)
-    return toast.error("Enter student ID and session ID.");
+    return toast.error("Please select a session and student.");
   setLoading("btn-mark", true);
   try {
     await markAttendance(studentId, sessionId, status || null);
@@ -368,7 +368,8 @@ async function handleMarkAttendance() {
 async function handleBulkMark() {
   const sessionId = v("bulk-session-id");
   const raw = v("bulk-records");
-  if (!sessionId || !raw) return toast.error("Enter session ID and records.");
+  if (!sessionId || !raw)
+    return toast.error("Please select a session and enter records.");
   setLoading("btn-bulk", true);
   try {
     const records = raw
@@ -394,7 +395,7 @@ async function handleBulkMark() {
 
 async function handleFetchStats() {
   const studentId = v("stats-student-id");
-  if (!studentId) return toast.error("Enter a student ID.");
+  if (!studentId) return toast.error("Please select a student.");
   setLoading("btn-fetch-stats", true);
   try {
     renderStudentStats(await getStudentStats(studentId));
@@ -453,7 +454,7 @@ async function handleUnenroll() {
 
 async function handleEnrollmentsByStudent() {
   const studentId = v("enroll-student-id");
-  if (!studentId) return toast.error("Enter a student ID.");
+  if (!studentId) return toast.error("Please select a student.");
   try {
     renderEnrollments(await getEnrollmentsByStudent(studentId), "student");
   } catch (e) {
@@ -491,7 +492,7 @@ async function handleExportStats() {
 
 async function handleExportSession() {
   const sessionId = v("export-session-id");
-  if (!sessionId) return toast.error("Enter a session ID.");
+  if (!sessionId) return toast.error("Please select a session.");
   try {
     await exportSessionFile(sessionId);
     toast.success("Downloading...");
@@ -516,6 +517,141 @@ async function populateCourseSelect() {
   } catch {}
 }
 
+async function populateDropdowns() {
+  try {
+    const [studentsData, coursesData, sessionsData] = await Promise.all([
+      getStudents(),
+      getCourses(),
+      getSessions(),
+    ]);
+    const students = studentsData?.data?.students ?? [];
+    const courses = coursesData?.data?.courses ?? [];
+    const sessions = sessionsData?.data?.sessions ?? [];
+    const ongoing = sessions.filter((s) => s.status === "ONGOING");
+    const allSess = sessions;
+
+    // ── Enrollment dropdowns ──────────────────────────────────────────────────
+    const enrollStudent = document.getElementById("enroll-student-id");
+    const enrollCourse = document.getElementById("enroll-course-id");
+    if (enrollStudent) {
+      enrollStudent.innerHTML =
+        `<option value="">Select a student...</option>` +
+        students
+          .map(
+            (s) =>
+              `<option value="${s.id}">${s.name} (${s.studentId})</option>`,
+          )
+          .join("");
+    }
+    if (enrollCourse) {
+      enrollCourse.innerHTML =
+        `<option value="">Select a course...</option>` +
+        courses
+          .map((c) => `<option value="${c.id}">${c.code} — ${c.name}</option>`)
+          .join("");
+    }
+
+    // ── Mark Attendance — session (ONGOING only) ──────────────────────────────
+    const markSession = document.getElementById("mark-session-id");
+    if (markSession) {
+      markSession.innerHTML = ongoing.length
+        ? `<option value="">Select an ongoing session...</option>` +
+          ongoing
+            .map(
+              (s) =>
+                `<option value="${s.id}">${s.course.code} — ${new Date(parseInt(s.date)).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })} @ ${s.location}</option>`,
+            )
+            .join("")
+        : `<option value="">No ongoing sessions</option>`;
+      // When session changes, populate students enrolled in that course
+      markSession.addEventListener("change", async () => {
+        await populateMarkStudents(markSession.value, ongoing);
+      });
+    }
+
+    // ── Bulk Mark — session (ONGOING only) ───────────────────────────────────
+    const bulkSession = document.getElementById("bulk-session-id");
+    if (bulkSession) {
+      bulkSession.innerHTML = ongoing.length
+        ? `<option value="">Select an ongoing session...</option>` +
+          ongoing
+            .map(
+              (s) =>
+                `<option value="${s.id}">${s.course.code} — ${new Date(parseInt(s.date)).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })} @ ${s.location}</option>`,
+            )
+            .join("")
+        : `<option value="">No ongoing sessions</option>`;
+    }
+
+    // ── Summary — all sessions ────────────────────────────────────────────────
+    const summarySession = document.getElementById("summary-session-id");
+    if (summarySession) {
+      summarySession.innerHTML =
+        `<option value="">Select a session...</option>` +
+        allSess
+          .map(
+            (s) =>
+              `<option value="${s.id}">[${s.status}] ${s.course.code} — ${new Date(parseInt(s.date)).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} @ ${s.location}</option>`,
+          )
+          .join("");
+    }
+
+    // ── Export — all sessions ─────────────────────────────────────────────────
+    const exportSession = document.getElementById("export-session-id");
+    if (exportSession) {
+      exportSession.innerHTML =
+        `<option value="">Select a session...</option>` +
+        allSess
+          .map(
+            (s) =>
+              `<option value="${s.id}">[${s.status}] ${s.course.code} — ${new Date(parseInt(s.date)).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</option>`,
+          )
+          .join("");
+    }
+
+    // ── Stats — all students ──────────────────────────────────────────────────
+    const statsStudent = document.getElementById("stats-student-id");
+    if (statsStudent) {
+      statsStudent.innerHTML =
+        `<option value="">Select a student...</option>` +
+        students
+          .map(
+            (s) =>
+              `<option value="${s.id}">${s.name} (${s.studentId})</option>`,
+          )
+          .join("");
+    }
+  } catch (e) {
+    console.error("Failed to populate dropdowns:", e);
+  }
+}
+
+async function populateMarkStudents(sessionId, ongoingSessions) {
+  const markStudent = document.getElementById("mark-student-id");
+  if (!markStudent) return;
+  if (!sessionId) {
+    markStudent.innerHTML = `<option value="">Select session first...</option>`;
+    return;
+  }
+  try {
+    const session = ongoingSessions.find((s) => s.id === sessionId);
+    if (!session) return;
+    const data = await getEnrollmentsByCourse(session.course.id);
+    const enrollments = data?.data?.enrollmentsByCourse ?? [];
+    markStudent.innerHTML = enrollments.length
+      ? `<option value="">Select a student...</option>` +
+        enrollments
+          .map(
+            (e) =>
+              `<option value="${e.student.id}">${e.student.name} (${e.student.studentId})</option>`,
+          )
+          .join("")
+      : `<option value="">No enrolled students</option>`;
+  } catch {
+    markStudent.innerHTML = `<option value="">Failed to load students</option>`;
+  }
+}
+
 // ── Navigation setup ──────────────────────────────────────────────────────────
 
 function setupNav() {
@@ -529,8 +665,13 @@ function setupNav() {
       if (page === "sessions") {
         loadSessions();
         populateCourseSelect();
+        populateDropdowns();
       }
       if (page === "my-attendance") loadMyAttendance();
+      if (page === "attendance") populateDropdowns();
+      if (page === "stats") populateDropdowns();
+      if (page === "enrollment") populateDropdowns();
+      if (page === "export") populateDropdowns();
       if (page === "dashboard") loadDashboard();
     });
   });

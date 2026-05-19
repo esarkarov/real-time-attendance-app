@@ -530,18 +530,16 @@
                   style="display: flex; flex-direction: column; gap: 12px"
                 >
                   <div class="field">
-                    <label class="field-label">Student ObjectId</label>
-                    <input
-                      id="mark-student-id"
-                      placeholder="paste student ObjectId..."
-                    />
+                    <label class="field-label">Session</label>
+                    <select id="mark-session-id">
+                      <option value="">Select an ongoing session...</option>
+                    </select>
                   </div>
                   <div class="field">
-                    <label class="field-label">Session ObjectId</label>
-                    <input
-                      id="mark-session-id"
-                      placeholder="paste session ObjectId..."
-                    />
+                    <label class="field-label">Student</label>
+                    <select id="mark-student-id">
+                      <option value="">Select session first...</option>
+                    </select>
                   </div>
                   <div class="field">
                     <label class="field-label"
@@ -573,11 +571,10 @@
                   style="display: flex; flex-direction: column; gap: 12px"
                 >
                   <div class="field">
-                    <label class="field-label">Session ObjectId</label>
-                    <input
-                      id="bulk-session-id"
-                      placeholder="paste session ObjectId..."
-                    />
+                    <label class="field-label">Session</label>
+                    <select id="bulk-session-id">
+                      <option value="">Select an ongoing session...</option>
+                    </select>
                   </div>
                   <div class="field">
                     <label class="field-label"
@@ -609,11 +606,10 @@
               <div class="section-body">
                 <div class="flex gap-8 items-center">
                   <div class="field" style="flex: 1; max-width: 360px">
-                    <label class="field-label">Session ObjectId</label>
-                    <input
-                      id="summary-session-id"
-                      placeholder="paste session ObjectId..."
-                    />
+                    <label class="field-label">Session</label>
+                    <select id="summary-session-id">
+                      <option value="">Select a session...</option>
+                    </select>
                   </div>
                   <button
                     id="btn-fetch-summary"
@@ -643,11 +639,10 @@
               <div class="section-body">
                 <div class="flex gap-8 items-center">
                   <div class="field" style="flex: 1; max-width: 360px">
-                    <label class="field-label">Student ObjectId</label>
-                    <input
-                      id="stats-student-id"
-                      placeholder="paste student ObjectId..."
-                    />
+                    <label class="field-label">Student</label>
+                    <select id="stats-student-id">
+                      <option value="">Select a student...</option>
+                    </select>
                   </div>
                   <button
                     id="btn-fetch-stats"
@@ -781,18 +776,16 @@
               <div class="section-body">
                 <div class="form-grid">
                   <div class="field">
-                    <label class="field-label">Student ObjectId</label>
-                    <input
-                      id="enroll-student-id"
-                      placeholder="paste student ObjectId..."
-                    />
+                    <label class="field-label">Student</label>
+                    <select id="enroll-student-id">
+                      <option value="">Select a student...</option>
+                    </select>
                   </div>
                   <div class="field">
-                    <label class="field-label">Course ObjectId</label>
-                    <input
-                      id="enroll-course-id"
-                      placeholder="paste course ObjectId..."
-                    />
+                    <label class="field-label">Course</label>
+                    <select id="enroll-course-id">
+                      <option value="">Select a course...</option>
+                    </select>
                   </div>
                 </div>
                 <div class="btn-group" style="margin-top: 12px">
@@ -855,11 +848,10 @@
                     LATE.
                   </p>
                   <div class="field" style="margin-bottom: 12px">
-                    <label class="field-label">Session ObjectId</label>
-                    <input
-                      id="export-session-id"
-                      placeholder="paste session ObjectId..."
-                    />
+                    <label class="field-label">Session</label>
+                    <select id="export-session-id">
+                      <option value="">Select a session...</option>
+                    </select>
                   </div>
                   <button id="btn-export-session" class="btn btn-amber">
                     ⬇ Download Session Sheet
