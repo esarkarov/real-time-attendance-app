@@ -1,21 +1,38 @@
 # Real-time Attendance System
 
-A GraphQL-based real-time attendance tracking system built with Apollo Server, WebSocket subscriptions, MongoDB, and JWT authentication.
+A distributed GraphQL-based attendance tracking system built with Apollo Server 4, WebSocket subscriptions, MongoDB, and JWT authentication. Developed as part of the **Programming 4 — Distributed Programming** course at UFAZ (M1 DSAI, Group 4).
+
+---
+
+## Features
+
+- **GraphQL API** — queries, mutations, and real-time subscriptions over a single endpoint
+- **WebSocket subscriptions** — live attendance events pushed to connected clients via `graphql-ws`
+- **JWT authentication** — role-based access control (TEACHER / STUDENT)
+- **Session lifecycle** — UPCOMING → ONGOING → CLOSED state machine
+- **Auto late detection** — configurable threshold per session
+- **Enrollment validation** — attendance only for enrolled students
+- **Bulk attendance marking** — mark entire class at once
+- **Attendance correction audit log** — every correction is tracked
+- **Excel export** — color-coded `.xlsx` reports for sessions and student stats
+- **Browser client** — role-aware UI with smart dropdowns, live feed, and toast notifications
+- **GraphQL Voyager** — interactive schema explorer at `/voyager`
 
 ---
 
 ## Tech Stack
 
-| Layer           | Technology                                         |
-| --------------- | -------------------------------------------------- |
-| Runtime         | Node.js + TypeScript                               |
-| GraphQL Server  | Apollo Server 4                                    |
-| Real-time       | GraphQL Subscriptions via `graphql-ws` (WebSocket) |
-| Database        | MongoDB + Mongoose                                 |
-| Authentication  | JWT + bcryptjs                                     |
-| Schema Explorer | GraphQL Voyager                                    |
-| Export          | ExcelJS (.xlsx)                                    |
-| Test Client     | Plain HTML/JS (ES Modules)                         |
+| Layer           | Technology                                 |
+| --------------- | ------------------------------------------ |
+| Runtime         | Node.js 22 + TypeScript 5                  |
+| GraphQL Server  | Apollo Server 4 + Express 4                |
+| Real-time       | `graphql-ws` + `WebSocketServer`           |
+| Database        | MongoDB Atlas + Mongoose 8                 |
+| Authentication  | JWT (`jsonwebtoken`) + `bcryptjs`          |
+| Event Bus       | `graphql-subscriptions` (in-memory PubSub) |
+| Export          | ExcelJS (`.xlsx`)                          |
+| Schema Explorer | GraphQL Voyager at `/voyager`              |
+| Client          | HTML / JS ES Modules (`npx serve client`)  |
 
 ---
 
@@ -35,8 +52,8 @@ cp .env.example .env
 
 Edit `.env`:
 
-```
-MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/real-time-attendance?retryWrites=true&w=majority
+```env
+MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/attendance?retryWrites=true&w=majority
 PORT=4000
 JWT_SECRET=your_super_secret_key_here
 ```
@@ -47,43 +64,57 @@ JWT_SECRET=your_super_secret_key_here
 npm run seed
 ```
 
+This creates 3 courses (PROG4, ML301, DM201), 8 students, 10 sessions (7 CLOSED with attendance records + 3 UPCOMING), and 43 attendance records.
+
+Pre-seeded credentials (password: `password123`):
+
+| Role    | Email          |
+| ------- | -------------- |
+| TEACHER | martin@ufaz.az |
+| STUDENT | elvin@ufaz.az  |
+| STUDENT | elbay@ufaz.az  |
+| STUDENT | roza@ufaz.az   |
+
 ### 4. Start the server
 
 ```bash
-npm run dev        # development (hot reload)
+npm run dev        # development with hot reload
 npm run build      # compile TypeScript
 npm start          # production
 ```
+
+### 5. Start the client
+
+```bash
+npx serve client
+```
+
+Open [http://localhost:3000](http://localhost:3000)
 
 ---
 
 ## Endpoints
 
-| Endpoint                                   | Description                          |
-| ------------------------------------------ | ------------------------------------ |
-| `http://localhost:4000/graphql`            | GraphQL API + Apollo Sandbox         |
-| `ws://localhost:4000/graphql`              | WebSocket subscriptions              |
-| `http://localhost:4000/voyager`            | Interactive schema explorer          |
-| `http://localhost:4000/health`             | Health check                         |
-| `http://localhost:4000/export/stats`       | Download student stats as .xlsx      |
-| `http://localhost:4000/export/session/:id` | Download session attendance as .xlsx |
+| Endpoint                                   | Description                            |
+| ------------------------------------------ | -------------------------------------- |
+| `http://localhost:4000/graphql`            | GraphQL API + Apollo Sandbox           |
+| `ws://localhost:4000/graphql`              | WebSocket subscriptions                |
+| `http://localhost:4000/voyager`            | Interactive schema explorer            |
+| `http://localhost:4000/health`             | Health check                           |
+| `http://localhost:4000/export/stats`       | Download all student stats as `.xlsx`  |
+| `http://localhost:4000/export/session/:id` | Download session attendance as `.xlsx` |
 
 ---
 
 ## Authentication
 
-All queries and mutations (except `login` and `register`) require a Bearer token.
+All operations except `login` and `register` require a Bearer token.
 
-**Register:**
+**Register (teachers only):**
 
 ```graphql
 mutation {
-  register(
-    name: "Prof. Martin"
-    email: "martin@ufaz.az"
-    password: "pass123"
-    role: TEACHER
-  ) {
+  register(name: "Prof. Martin", email: "martin@ufaz.az", password: "pass123") {
     token
     user {
       id
@@ -109,60 +140,72 @@ mutation {
 }
 ```
 
-Add the token to the `Authorization` header:
-
 ```
 Authorization: Bearer <token>
 ```
+
+> Students do not self-register. A teacher creates their account via `createStudent`, which atomically creates both the academic record and login credentials.
 
 ---
 
 ## Roles
 
-| Role      | Permissions                                                                        |
+| Role      | Access                                                                             |
 | --------- | ---------------------------------------------------------------------------------- |
 | `TEACHER` | Full access — manage students, courses, sessions, attendance, enrollments, exports |
-| `STUDENT` | Read-only — view own attendance (`myAttendance`), own stats, courses, sessions     |
+| `STUDENT` | Read-only — `myAttendance`, own `studentStats`, courses, sessions, live feed       |
 
 ---
 
-## GraphQL Operations
+## GraphQL Schema
 
 ### Queries
 
 ```graphql
-# Fetch data (TEACHER)
+me: User!
+dashboardStats: DashboardStats!
 students(limit: Int, offset: Int): [Student!]!
 courses(limit: Int, offset: Int): [Course!]!
 sessions(courseId: ID, status: SessionStatus, limit: Int, offset: Int): [Session!]!
 attendanceBySession(sessionId: ID!): AttendanceSummary!
 attendanceByStudent(studentId: ID!): [AttendanceRecord!]!
+myAttendance(limit: Int, offset: Int): [AttendanceRecord!]!
+attendanceLogs(attendanceRecordId: ID!): [AttendanceLog!]!
 studentStats(studentId: ID!): StudentStats!
 enrollmentsByStudent(studentId: ID!): [Enrollment!]!
 enrollmentsByCourse(courseId: ID!): [Enrollment!]!
-
-# Student only
-myAttendance(limit: Int, offset: Int): [AttendanceRecord!]!
 ```
 
 ### Mutations
 
 ```graphql
-# Auth (public)
-register(name, email, password, role, studentId?): AuthPayload!
+# Auth
+register(name, email, password): AuthPayload!
 login(email, password): AuthPayload!
+changePassword(oldPassword, newPassword): Boolean!
 
-# Sessions (TEACHER)
+# Students — also creates login account
+createStudent(name, email, studentId, password): Student!
+updateStudent(id, name?, email?, studentId?): Student!
+deleteStudent(id): Boolean!
+
+# Courses
+createCourse(name, code, instructor): Course!
+updateCourse(id, name?, code?, instructor?): Course!
+deleteCourse(id): Boolean!
+
+# Sessions
 createSession(courseId, date, location, lateThresholdMinutes?): Session!
-openSession(id): Session!    # UPCOMING → ONGOING
-closeSession(id): Session!   # ONGOING  → CLOSED
+openSession(id): Session!     # UPCOMING → ONGOING
+closeSession(id): Session!    # ONGOING  → CLOSED
+deleteSession(id): Boolean!
 
-# Attendance (TEACHER — session must be ONGOING)
+# Attendance (session must be ONGOING)
 markAttendance(studentId, sessionId, status?): AttendanceRecord!
-markAttendanceBulk(sessionId, records: [{ studentId, status }]): BulkAttendanceResult!
+markAttendanceBulk(sessionId, records: [BulkAttendanceInput!]!): BulkAttendanceResult!
 updateAttendance(id, status): AttendanceRecord!
 
-# Enrollment (TEACHER)
+# Enrollment
 enrollStudent(studentId, courseId): Enrollment!
 unenrollStudent(studentId, courseId): Boolean!
 ```
@@ -170,7 +213,7 @@ unenrollStudent(studentId, courseId): Boolean!
 ### Subscriptions
 
 ```graphql
-# Watch a specific session (TEACHER)
+# Live events for a specific session
 subscription ($sessionId: ID!) {
   attendanceMarked(sessionId: $sessionId) {
     id
@@ -180,10 +223,14 @@ subscription ($sessionId: ID!) {
       name
       studentId
     }
+    session {
+      date
+      location
+    }
   }
 }
 
-# Watch all sessions (TEACHER)
+# Live events across all sessions
 subscription {
   attendanceUpdated {
     id
@@ -206,10 +253,12 @@ subscription {
 ## Session Lifecycle
 
 ```
-UPCOMING ──→ openSession ──→ ONGOING ──→ closeSession ──→ CLOSED
+UPCOMING ──→ openSession() ──→ ONGOING ──→ closeSession() ──→ CLOSED
 ```
 
-Attendance can only be marked when a session is `ONGOING`. Marking attendance after the `lateThresholdMinutes` (default: 15 min) automatically sets status to `LATE`.
+- Attendance can only be marked when a session is `ONGOING`
+- If `status` is omitted, the system auto-detects: elapsed time > `lateThresholdMinutes` → `LATE`, otherwise → `PRESENT`
+- `ABSENT` must always be set explicitly
 
 ---
 
@@ -219,7 +268,7 @@ Attendance can only be marked when a session is `ONGOING`. Marking attendance af
 Client (HTTP)              Client (WebSocket)
       │                           │
       ▼                           ▼
-Apollo Server 4           graphql-ws server
+Apollo Server 4           graphql-ws Server
       │                           │
       └─────────────┬─────────────┘
                     │
@@ -236,4 +285,54 @@ Apollo Server 4           graphql-ws server
            subscribed clients
 ```
 
+Both Apollo Server (HTTP) and graphql-ws (WebSocket) share the same schema and resolvers. When `markAttendance` is called, the resolver publishes to the in-memory PubSub bus, which immediately delivers the event to all active subscription clients filtered by `sessionId`.
+
 ---
+
+## GraphQL Voyager — Schema Explorer
+
+Visit `http://localhost:4000/voyager` to explore the full schema visually.
+
+### Queries & Types
+
+![GraphQL Voyager — Queries](public/GraphQL-Voyager-query.png)
+
+### Mutations
+
+![GraphQL Voyager — Mutations](public/GraphQL-Voyager-mutation.png)
+
+### Subscriptions
+
+![GraphQL Voyager — Subscriptions](public/GraphQL-Voyager-subs.png)
+
+---
+
+## Project Structure
+
+```
+├── client/                  # Browser client (ES Modules)
+│   ├── index.html
+│   └── js/
+│       ├── api.js           # GraphQL HTTP + REST calls
+│       ├── app.js           # Event handlers and navigation
+│       ├── ui.js            # DOM rendering functions
+│       ├── subscription.js  # WebSocket subscription client
+│       └── toast.js         # Toast notification system
+├── public/                  # Voyager screenshots
+├── scripts/
+│   └── seed.ts              # Database seeder
+├── src/
+│   ├── graphql/
+│   │   ├── resolvers/       # Query, Mutation, Subscription resolvers
+│   │   └── typeDefs/        # GraphQL schema definition
+│   ├── models/              # Mongoose models
+│   └── utils/               # auth, db, export, pubsub
+├── .env.example
+└── tsconfig.json
+```
+
+---
+
+## License
+
+MIT
