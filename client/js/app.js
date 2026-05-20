@@ -5,6 +5,7 @@ import {
   clearToken,
   login,
   register,
+  getDashboardStats,
   getStudents,
   getCourses,
   getSessions,
@@ -39,6 +40,8 @@ import {
   navigateTo,
   setLoading,
   renderDashboard,
+  renderTeacherDashboard,
+  renderStudentDashboard,
   renderStudents,
   renderCourses,
   renderSessions,
@@ -133,18 +136,13 @@ function handleLogout() {
 
 async function loadDashboard() {
   try {
-    const [students, sessions] = await Promise.all([
-      currentUser.role === "TEACHER" ? getStudents() : Promise.resolve(null),
-      getSessions(),
-    ]);
-    renderDashboard(students, sessions, null);
-
-    // session count for student dashboard too
-    const total = sessions?.data?.sessions?.length ?? 0;
-    document.getElementById("dash-sessions").textContent = total;
     if (currentUser.role === "TEACHER") {
-      document.getElementById("dash-students").textContent =
-        students?.data?.students?.length ?? 0;
+      const stats = await getDashboardStats();
+      renderTeacherDashboard(stats?.data?.dashboardStats);
+    } else {
+      // Student — fetch personal stats using their linked studentId
+      const stats = await getStudentStats(currentUser.studentId);
+      renderStudentDashboard(stats?.data?.studentStats);
     }
   } catch (e) {
     toast.error(e.message);

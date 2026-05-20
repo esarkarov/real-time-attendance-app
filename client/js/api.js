@@ -61,6 +61,11 @@ export const register = (name, email, password, role) =>
 
 // ── Queries ───────────────────────────────────────────────────────────────────
 
+export const getDashboardStats = () =>
+  gql(
+    `query{ dashboardStats{ totalStudents totalCourses totalSessions ongoingSessions totalAttendanceRecords overallAttendanceRate } }`,
+  );
+
 export const getStudents = (limit = 50, offset = 0) =>
   gql(
     `query($limit:Int,$offset:Int){ students(limit:$limit,offset:$offset){ id name email studentId createdAt } }`,
