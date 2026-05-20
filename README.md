@@ -1,6 +1,6 @@
 # Real-time Attendance System
 
-A distributed GraphQL-based attendance tracking system built with Apollo Server 4, WebSocket subscriptions, MongoDB, and JWT authentication. Developed as part of the **Programming 4 — Distributed Programming** course at UFAZ (M1 DSAI, Group 4).
+A distributed GraphQL-based attendance tracking system built with Apollo Server 4, WebSocket subscriptions, MongoDB, and JWT authentication.
 
 ---
 
@@ -72,8 +72,6 @@ Pre-seeded credentials (password: `password123`):
 | ------- | -------------- |
 | TEACHER | martin@ufaz.az |
 | STUDENT | elvin@ufaz.az  |
-| STUDENT | elbay@ufaz.az  |
-| STUDENT | roza@ufaz.az   |
 
 ### 4. Start the server
 
